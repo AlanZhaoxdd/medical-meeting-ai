@@ -1,0 +1,219 @@
+name: medical-meeting-ai
+
+x-backend-env: &backend-env
+  APP_ENVIRONMENT: ${APP_ENVIRONMENT:-development}
+  APP_DEBUG: ${APP_DEBUG:-false}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+asyncpg://medical:${POSTGRES_PASSWORD:-medical}@postgres:5432/medical_meeting
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+  ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-15}
+  REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-30}
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+  MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+  MINIO_BUCKET: ${MINIO_BUCKET:-medical-kb}
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/1
+  CELERY_RESULT_BACKEND: redis://redis:6379/2
+  MILVUS_URI: http://milvus:19530
+  MILVUS_COLLECTION: ${MILVUS_COLLECTION:-medical_kb_records}
+  MODEL_SERVICE_URL: http://bge-models:8100
+  MODEL_SERVICE_TIMEOUT_SECONDS: ${MODEL_SERVICE_TIMEOUT_SECONDS:-300}
+  MODEL_SERVICE_MAX_INPUT_CHARACTERS: ${BGE_MAX_INPUT_CHARACTERS:-32000}
+  EMBEDDING_MODEL: ${BGE_EMBEDDING_MODEL:-BAAI/bge-m3}
+  EMBEDDING_VERSION: ${EMBEDDING_VERSION:-bge-m3-v1}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+  MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-52428800}
+  MEETING_IMPORT_STALE_SECONDS: ${MEETING_IMPORT_STALE_SECONDS:-3600}
+  CHUNK_TARGET_TOKENS: ${CHUNK_TARGET_TOKENS:-700}
+  CHUNK_MAX_TOKENS: ${CHUNK_MAX_TOKENS:-1000}
+  CHUNK_OVERLAP_TOKENS: ${CHUNK_OVERLAP_TOKENS:-100}
+  CHUNK_SIMILARITY_THRESHOLD: ${CHUNK_SIMILARITY_THRESHOLD:-0.65}
+  BGE_BATCH_SIZE: ${BGE_BATCH_SIZE:-8}
+  BGE_EMBEDDING_STRATEGY: ${BGE_EMBEDDING_STRATEGY:-single_pass_pool}
+  FUSION_TOP_K: ${FUSION_TOP_K:-15}
+  RERANK_TOP_K: ${RERANK_TOP_K:-5}
+
+services:
+  postgres:
+    image: postgres:16.9-alpine
+    environment:
+      POSTGRES_DB: medical_meeting
+      POSTGRES_USER: medical
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medical}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medical -d medical_meeting"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4.5-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-07-21T05-28-08Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing "local/$${MINIO_BUCKET}" &&
+        mc anonymous set none "local/$${MINIO_BUCKET}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-medical-kb}
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd
+    volumes:
+      - etcd_data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  milvus:
+    image: milvusdb/milvus:v2.6.0
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build: ./backend
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      milvus:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    build: ./backend
+    command: ["uv", "run", "celery", "-A", "app.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${WORKER_CONCURRENCY:-1}"]
+    environment: *backend-env
+    depends_on:
+      api:
+        condition: service_healthy
+
+  beat:
+    build: ./backend
+    command: ["uv", "run", "celery", "-A", "app.worker.celery_app:celery_app", "beat", "--loglevel=INFO"]
+    environment: *backend-env
+    depends_on:
+      api:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+  bge-models:
+    profiles: ["models"]
+    build: ./model-service
+    environment:
+      BGE_EMBEDDING_MODEL: ${BGE_EMBEDDING_MODEL:-BAAI/bge-m3}
+      BGE_RERANKER_MODEL: ${BGE_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      BGE_DEVICE: ${BGE_DEVICE:-cpu}
+      BGE_BATCH_SIZE: ${BGE_BATCH_SIZE:-8}
+      BGE_MAX_INPUT_CHARACTERS: ${BGE_MAX_INPUT_CHARACTERS:-32000}
+      BGE_RERANKER_QUERY_MAX_LENGTH: ${BGE_RERANKER_QUERY_MAX_LENGTH:-128}
+      BGE_RERANKER_MAX_LENGTH: ${BGE_RERANKER_MAX_LENGTH:-512}
+      OMP_NUM_THREADS: ${BGE_OMP_NUM_THREADS:-8}
+      MKL_NUM_THREADS: ${BGE_MKL_NUM_THREADS:-8}
+      OPENBLAS_NUM_THREADS: ${BGE_OPENBLAS_NUM_THREADS:-8}
+      TOKENIZERS_PARALLELISM: "false"
+    ports:
+      - "8100:8100"
+    volumes:
+      - huggingface_models:/models/huggingface
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  etcd_data:
+  milvus_data:
+  huggingface_models:

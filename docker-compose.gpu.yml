@@ -1,0 +1,17 @@
+services:
+  bge-models:
+    build:
+      context: ./model-service
+      args:
+        # CUDA wheel index for the model-service image. Switch to cu128/cu130
+        # when the host driver supports a newer CUDA runtime.
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu126
+    environment:
+      BGE_DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

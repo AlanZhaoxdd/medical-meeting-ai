@@ -1,0 +1,13 @@
+.env
+.env.local
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+coverage.xml
+node_modules/
+dist/
+.DS_Store
+*.log

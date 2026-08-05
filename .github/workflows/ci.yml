@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: medical_meeting_test
+          POSTGRES_USER: medical
+          POSTGRES_PASSWORD: medical
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medical -d medical_meeting_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://medical:medical@localhost:5432/medical_meeting_test
+      TEST_DATABASE_URL: postgresql+asyncpg://medical:medical@localhost:5432/medical_meeting_test
+      JWT_SECRET_KEY: ci-only-secret-key-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --all-groups
+        working-directory: backend
+      - run: uv run ruff check .
+        working-directory: backend
+      - run: uv run mypy app
+        working-directory: backend
+      - run: uv run alembic upgrade head
+        working-directory: backend
+      - run: uv run pytest
+        working-directory: backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build

@@ -1,0 +1,58 @@
+{
+  "environment": {
+    "device": "cpu",
+    "embedding_model": "BAAI/bge-m3",
+    "embedding_strategy": "single_pass_pool",
+    "reranker_model": "BAAI/bge-reranker-v2-m3",
+    "bge_batch_size": 8
+  },
+  "queries": 111,
+  "top_k": [
+    1,
+    3,
+    5,
+    10
+  ],
+  "params": {
+    "dense_limit": 50,
+    "sparse_limit": 50,
+    "fusion_limit": 15,
+    "ef": 128,
+    "rerank_top": 5
+  },
+  "results": {
+    "dense_only": {
+      "n": 111,
+      "hit@1": 0.045,
+      "hit@3": 0.0721,
+      "hit@5": 0.0721,
+      "hit@10": 0.0991,
+      "mrr@10": 0.0607
+    },
+    "sparse_only": {
+      "n": 111,
+      "hit@1": 0.0631,
+      "hit@3": 0.0811,
+      "hit@5": 0.0811,
+      "hit@10": 0.1081,
+      "mrr@10": 0.0761
+    },
+    "hybrid": {
+      "n": 111,
+      "hit@1": 0.045,
+      "hit@3": 0.0811,
+      "hit@5": 0.0991,
+      "hit@10": 0.1081,
+      "mrr@10": 0.0678
+    },
+    "hybrid_rerank": {
+      "n": 111,
+      "hit@1": 0.0,
+      "hit@3": 0.0,
+      "hit@5": 0.0,
+      "hit@10": 0.0,
+      "mrr@10": 0.0
+    }
+  },
+  "golden": "eval_set.json"
+}

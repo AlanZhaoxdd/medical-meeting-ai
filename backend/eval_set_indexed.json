@@ -1,0 +1,222 @@
+{
+  "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe",
+  "source": "indexed-chunks-only",
+  "entries": [
+    {
+      "query": "司美格鲁肽2.4mg在SELECT研究中除了减重效果外，还显示出哪些获益？",
+      "expected_chunk_id": "30ead615-9158-5bcd-8fef-2b6c1f4c4bcf",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家们建议司美格鲁肽2.4mg的治疗周期应至少持续多久以达到最大获益？",
+      "expected_chunk_id": "30ead615-9158-5bcd-8fef-2b6c1f4c4bcf",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "SELECT研究中司美格鲁肽2.4mg的MACE曲线分离较早，这与司美格鲁肽1.0mg的CVOT结果有何不同？",
+      "expected_chunk_id": "9a24e740-f313-58ed-b5ea-4dd5195325f5",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "为什么认为司美格鲁肽2.4mg在非糖尿病患者中的心血管获益不能简单归因于体重下降？",
+      "expected_chunk_id": "9a24e740-f313-58ed-b5ea-4dd5195325f5",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "在Action China调查中，认为肥胖症是一种疾病的医生和患者比例分别是多少？",
+      "expected_chunk_id": "b1e85f65-2e77-56ec-b98d-ded13f5fa0ef",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "根据姚斌教授的观点，肥胖症患者最主要的死因是什么？",
+      "expected_chunk_id": "b1e85f65-2e77-56ec-b98d-ded13f5fa0ef",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg在哪些研究中显示出了心血管获益？",
+      "expected_chunk_id": "40e85c98-5d13-52b5-b765-a3fb1e952b72",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家建议司美格鲁肽2.4mg的治疗周期至少应持续多久？",
+      "expected_chunk_id": "40e85c98-5d13-52b5-b765-a3fb1e952b72",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "SELECT研究中，当受试者的降钙素水平超过多少时就必须停用药物并转诊内分泌专科？",
+      "expected_chunk_id": "a464f498-2b3a-5abf-bf9c-2d74543b96fa",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "SELECT研究里OSA和COPD患者约占多大比例？",
+      "expected_chunk_id": "a464f498-2b3a-5abf-bf9c-2d74543b96fa",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg的长期使用数据最长有多久？",
+      "expected_chunk_id": "2b812cf6-819d-5d59-8ff7-a28fff451710",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "目前比较司美格鲁肽1mg和2.4mg剂量疗效的研究是针对哪类人群？",
+      "expected_chunk_id": "2b812cf6-819d-5d59-8ff7-a28fff451710",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg的推荐治疗周期是多久？",
+      "expected_chunk_id": "7b6a6031-1226-5b23-b2b6-3917a857115d",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "SELECT研究结果主要证明了司美格鲁肽2.4mg的什么获益？",
+      "expected_chunk_id": "7b6a6031-1226-5b23-b2b6-3917a857115d",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽治疗肥胖症的最高剂量是多少？",
+      "expected_chunk_id": "7bdacfff-2ef3-5b7f-a00b-cf476ece55d4",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "为什么奥利司他这种药物在临床应用上受到限制？",
+      "expected_chunk_id": "7bdacfff-2ef3-5b7f-a00b-cf476ece55d4",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "SELECT研究中司美格鲁肽2.4mg的主要心血管终点结果如何？",
+      "expected_chunk_id": "fe5f70ad-7706-5825-94a5-991af0d24900",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg的心血管获益能否外推到心血管高危但无糖尿病的人群？",
+      "expected_chunk_id": "fe5f70ad-7706-5825-94a5-991af0d24900",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家建议司美格鲁肽2.4mg的治疗周期至少应持续多久？",
+      "expected_chunk_id": "4285c9fa-5794-53f5-b291-928fc5a12f5b",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家认为司美格鲁肽2.4mg带来的心血管获益可能涉及哪些机制？",
+      "expected_chunk_id": "4285c9fa-5794-53f5-b291-928fc5a12f5b",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg在SELECT研究中显示出对哪类肥胖症患者能降低MACE风险？",
+      "expected_chunk_id": "703cafac-37d8-5760-899f-fea1b50046cd",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家们认为司美格鲁肽2.4mg的心血管保护作用除了体重下降外，还可能涉及哪些代谢改善？",
+      "expected_chunk_id": "703cafac-37d8-5760-899f-fea1b50046cd",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg在哪些研究中显示出明确的心血管获益？",
+      "expected_chunk_id": "47869a79-b9a9-57a4-b3ae-19592607c733",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家建议司美格鲁肽2.4mg的治疗周期应至少持续多长时间？",
+      "expected_chunk_id": "47869a79-b9a9-57a4-b3ae-19592607c733",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg在SELECT研究中首次证实了减重同时能带来什么获益？",
+      "expected_chunk_id": "edbd2729-977a-5e3a-9eab-8088ca26423a",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "对于肥胖合并心血管疾病的患者，司美格鲁肽2.4mg的临床应用有哪些建议？",
+      "expected_chunk_id": "edbd2729-977a-5e3a-9eab-8088ca26423a",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "SELECT研究显示司美格鲁肽2.4mg能将MACE风险降低多少？",
+      "expected_chunk_id": "520cfa98-e72c-5923-a7c5-53227e8534f9",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家建议使用司美格鲁肽2.4mg管理体重时，起始剂量应该怎么给？",
+      "expected_chunk_id": "520cfa98-e72c-5923-a7c5-53227e8534f9",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg的SELECT研究首次证实了什么？",
+      "expected_chunk_id": "a10e87ed-2fe2-5daa-b21f-03b02c6bb8b0",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "使用司美格鲁肽2.4mg治疗时，临床医生需要关注哪些潜在的副作用？",
+      "expected_chunk_id": "a10e87ed-2fe2-5daa-b21f-03b02c6bb8b0",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "SELECT研究首次证实了司美格鲁肽2.4mg在减重的同时还能带来什么额外获益？",
+      "expected_chunk_id": "647f9814-1ddc-5879-9be8-4d5db6977ea1",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家建议未来需要特别关注哪些特殊人群使用司美格鲁肽2.4mg的疗效和安全性？",
+      "expected_chunk_id": "647f9814-1ddc-5879-9be8-4d5db6977ea1",
+      "expected_document_id": "1e600154-9388-4bf8-9328-77efd1245e6e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "司美格鲁肽2.4mg在SELECT研究中将主要心血管不良事件风险降低了多少？",
+      "expected_chunk_id": "c04a00f6-e4c0-54e6-a576-44c75fae4db2",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "临床使用司美格鲁肽2.4mg进行体重管理时，专家建议的起始剂量和递增方式是什么？",
+      "expected_chunk_id": "c04a00f6-e4c0-54e6-a576-44c75fae4db2",
+      "expected_document_id": "837b7d45-c66f-4a14-8027-00a676550c9c",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "SELECT研究首次证实了司美格鲁肽2.4mg在减重之外还能带来什么获益？",
+      "expected_chunk_id": "a45aa371-cd8b-544a-a97f-b2ef5999ed18",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    },
+    {
+      "query": "专家们对于司美格鲁肽2.4mg在肥胖超重人群中的适用剂量普遍持什么看法？",
+      "expected_chunk_id": "a45aa371-cd8b-544a-a97f-b2ef5999ed18",
+      "expected_document_id": "cba1593f-b933-40bb-b0e6-117d267f803e",
+      "kb_id": "2f61c769-2a59-44a3-ab24-6b353bf09ebe"
+    }
+  ]
+}

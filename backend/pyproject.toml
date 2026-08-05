@@ -1,0 +1,77 @@
+[project]
+name = "medical-meeting-ai"
+version = "0.1.0"
+description = "医药会议智能分析平台第一阶段后端"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "alembic>=1.14,<2.0",
+    "argon2-cffi>=23.1,<26.0",
+    "asyncpg>=0.30,<1.0",
+    "celery[redis]>=5.4,<6.0",
+    "docling>=2.48,<3.0",
+    "fastapi>=0.115,<1.0",
+    "httpx>=0.28,<1.0",
+    "langchain-core>=0.3,<2.0",
+    "langchain-openai>=0.3,<2.0",
+    "langfuse>=4.0,<5.0",
+    "langgraph>=0.4,<2.0",
+    "langgraph-checkpoint-postgres>=2.0,<4.0",
+    "minio>=7.2,<8.0",
+    "pyjwt>=2.10,<3.0",
+    "pymilvus>=2.5,<3.0",
+    "pydantic-settings>=2.6,<3.0",
+    "psycopg[binary,pool]>=3.2,<4.0",
+    "python-docx>=1.2,<2.0",
+    "python-multipart>=0.0.20,<1.0",
+    "redis>=5.2,<7.0",
+    "sqlalchemy[asyncio]>=2.0.36,<3.0",
+    "torch>=2.2,<3.0",
+    "torchvision>=0.17,<1.0",
+    "uvicorn[standard]>=0.32,<1.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13,<2.0",
+    "pytest>=8.3,<9.0",
+    "pytest-asyncio>=0.24,<1.0",
+    "ruff>=0.8,<1.0",
+    "testcontainers>=4.8,<5.0",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008", "UP007", "UP035", "UP037", "UP045"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+plugins = []
+exclude = ["alembic"]
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "pymilvus.*", "testcontainers.*"]
+ignore_missing_imports = true
