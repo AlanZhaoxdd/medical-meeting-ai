@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     langfuse_host: str = ""
     max_upload_bytes: int = 52_428_800
     meeting_import_stale_seconds: int = 3_600
+    # Maximum ranked candidates per question type kept in the selectable pool.
+    meeting_question_candidate_limit: int = 10
+    # Default page size when the frontend opens the candidate picker.
+    question_candidate_page_size: int = 5
     chunk_target_tokens: int = 700
     chunk_max_tokens: int = 1000
     chunk_overlap_tokens: int = 100

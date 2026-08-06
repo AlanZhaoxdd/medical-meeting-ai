@@ -28,6 +28,8 @@ export interface VerificationQuestion {
   review_status?: 'AI_DRAFT' | 'USER_EDITED' | 'CONFIRMED' | 'REJECTED' | string | null
   support_score?: number | null
   evidence_count?: number
+  candidate_rank?: number | null
+  analysis_selected?: boolean
   expected_answer_type?: string | null
   evidences?: QuestionEvidence[]
   display_order?: number
@@ -81,6 +83,45 @@ export interface VerificationActionPayload {
 export interface AnalysisSubmissionResponse {
   verification: MeetingVerificationSnapshot
   message: string
+  task_id?: string | null
+  task_status?: string | null
+}
+
+export interface QuestionCandidate {
+  id: string
+  question_type: VerificationQuestionType
+  rank: number | null
+  content: string
+  topic: string | null
+  rationale: string | null
+  expected_answer_type: string | null
+  support_score: number | null
+  evidence_count: number
+  selected: boolean
+  source: string
+  version: number
+}
+
+export interface QuestionCandidatePage {
+  items: QuestionCandidate[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export interface AnalysisSelectionPayload {
+  expected_version: number
+  selected_question_ids: string[]
+}
+
+export interface AnalysisTask {
+  task_id: string
+  status: string
+  current_stage: string
+  progress: number
+  message: string | null
+  error_message: string | null
+  retry_count: number
 }
 
 export interface MeetingVerificationListItem extends Meeting {
@@ -136,6 +177,8 @@ const question = (value: unknown, type: VerificationQuestionType, index: number)
     review_status: reviewStatus,
     support_score: typeof item.support_score === 'number' ? item.support_score : null,
     evidence_count: typeof item.evidence_count === 'number' ? item.evidence_count : (evidences?.length ?? 0),
+    candidate_rank: typeof item.candidate_rank === 'number' ? item.candidate_rank : null,
+    analysis_selected: typeof item.analysis_selected === 'boolean' ? item.analysis_selected : false,
     expected_answer_type: typeof item.expected_answer_type === 'string' ? item.expected_answer_type : null,
     evidences,
     display_order: typeof item.display_order === 'number' ? item.display_order : index,

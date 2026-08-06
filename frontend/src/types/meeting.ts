@@ -17,6 +17,8 @@ export type AnalysisStatus =
 
 export interface Meeting {
   id: string
+  organization_id?: string | null
+  knowledge_base_id?: string | null
   title: string
   starts_at: string
   ends_at: string

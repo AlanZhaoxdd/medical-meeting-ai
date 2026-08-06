@@ -69,6 +69,8 @@ Docker Desktop（WSL2 后端）+ NVIDIA 驱动下使用同一命令；先在 WSL
 
 详细状态机见 [docs/state-machine.md](docs/state-machine.md)，数据结构见 [docs/data-model.md](docs/data-model.md)，API 清单见 [docs/api.md](docs/api.md)。
 
+会议智能问答通过 `POST /api/v1/meetings/{meeting_id}/ai-chat` 提供：基于确认版会议纪要（可选叠加已发布知识库）做混合检索，由 LLM 生成带引用来源的答案；材料不足时返回 `INSUFFICIENT_CONTEXT` 而不编造。
+
 ## 测试与检查
 
 ```bash
@@ -99,7 +101,7 @@ Compose 使用 `postgres_data`、`minio_data`、`milvus_data`、`redis_data`、`
 
 ## 本迭代明确不含
 
-实时 ASR/音频流、最终问答生成、PPT/图表/结构化纪要生成、GraphRAG、任意自定义 Schema/Prompt 编辑器、组织公共 KB 和跨 KB 检索。
+实时 ASR/音频流、PPT/图表/结构化纪要生成、GraphRAG、任意自定义 Schema/Prompt 编辑器、组织公共 KB 和跨 KB 检索。
 
 ## 官方接口参考
 

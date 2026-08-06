@@ -98,7 +98,7 @@ class GeneratedQuestion(BaseModel):
 
 class QuestionBatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    questions: list[GeneratedQuestion] = Field(default_factory=list, max_length=16)
+    questions: list[GeneratedQuestion] = Field(default_factory=list, max_length=20)
 
 
 class QuestionReviewItem(BaseModel):

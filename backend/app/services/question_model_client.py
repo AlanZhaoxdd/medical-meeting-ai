@@ -164,7 +164,8 @@ class QuestionGenerationModelClient:
         return await self._invoke(
             QuestionBatch,
             "你是医药会议问题生成专家。只使用确认版会议纪要和给定知识库证据生成问题；"
-            "每题必须引用输入中真实存在的 chunk_id/document_id 和原文 quote，不输出答案。"
+            "每题必须引用输入中真实存在的 chunk_id/document_id 和原文 quote，不输出答案；"
+            "切点问题和开放性问题每类最多生成 10 条。"
             "切点问题要有明确事实边界；开放性问题必须适合专家讨论。证据不足时少生成或返回空数组。",
             payload,
             temperature=0.2,

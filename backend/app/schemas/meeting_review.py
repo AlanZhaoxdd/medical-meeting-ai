@@ -60,6 +60,8 @@ class MeetingQuestionRead(BaseModel):
     support_score: Optional[float] = None
     expected_answer_type: Optional[str] = None
     evidence_count: int = 0
+    candidate_rank: Optional[int] = None
+    analysis_selected: bool = False
     version: int
     created_at: datetime
     updated_at: datetime
@@ -88,6 +90,56 @@ class AnalysisSubmissionRead(BaseModel):
 
     verification: MeetingVerificationRead
     message: str
+    task_id: Optional[UUID] = None
+    task_status: Optional[str] = None
+
+
+class QuestionCandidateRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    question_type: MeetingQuestionType
+    rank: Optional[int] = None
+    content: str
+    topic: Optional[str] = None
+    rationale: Optional[str] = None
+    expected_answer_type: Optional[str] = None
+    support_score: Optional[float] = None
+    evidence_count: int = 0
+    selected: bool = False
+    source: str
+    version: int
+
+
+class QuestionCandidatePage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[QuestionCandidateRead]
+    total: int
+    offset: int
+    limit: int
+
+
+class AnalysisSelectionUpdate(ReviewSchemaBase):
+    expected_version: int = Field(ge=1)
+    selected_question_ids: list[UUID] = Field(default_factory=list, max_length=40)
+
+
+class AnalysisSubmissionRequest(ReviewSchemaBase):
+    expected_version: int = Field(ge=1)
+    selected_question_ids: list[UUID] = Field(default_factory=list, max_length=40)
+
+
+class AnalysisTaskRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: UUID
+    status: str
+    current_stage: str
+    progress: int = Field(ge=0, le=100)
+    message: Optional[str] = None
+    error_message: Optional[str] = None
+    retry_count: int = 0
 
 
 class QuestionGenerationRead(BaseModel):

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.models.kb import BenchmarkRun, Chunk, Document, IngestionJob, OutboxEvent
-from app.models.meeting import AiTask, AiTaskStatus
+from app.models.meeting import AiTask, AiTaskStatus, AnalysisStatus, Meeting
 from app.schemas.kb import DocumentStatus
 from app.services.benchmark import (
     run_embedding_benchmark,
@@ -23,6 +23,7 @@ from app.services.benchmark import (
 from app.services.model_client import ModelServiceClient
 from app.services.question_generation import claim_task
 from app.services.vector_store import VectorStore
+from app.worker.analysis_graph import AnalysisState, build_analysis_graph
 from app.worker.celery_app import celery_app
 from app.worker.graph import run_graph
 from app.worker.meeting_import import run_meeting_import  # noqa: F401,E402
@@ -210,6 +211,11 @@ async def _sync_outbox_events() -> dict[str, int]:
                     elif event.event_type == "question_generation.requested":
                         celery_app.send_task(
                             "app.worker.tasks.run_question_generation",
+                            args=[event.payload["task_id"]],
+                        )
+                    elif event.event_type == "analysis.requested":
+                        celery_app.send_task(
+                            "app.worker.tasks.run_analysis",
                             args=[event.payload["task_id"]],
                         )
                     event.status = "PROCESSED"
@@ -457,6 +463,114 @@ def run_benchmark(self: Task, run_id: str) -> dict[str, Any]:
 def run_question_generation(self: Task, task_id: str) -> dict[str, Any]:
     try:
         return asyncio.run(_run_question_generation(task_id))
+    except Exception as exc:
+        retryable = not isinstance(exc, AppException) or exc.status_code >= 500
+        if retryable and self.request.retries < self.max_retries:
+            raise self.retry(exc=exc, countdown=min(300, 2 ** (self.request.retries + 1))) from exc
+        raise
+
+
+async def _run_analysis(task_id: str) -> dict[str, Any]:
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    claimed_token: UUID | None = None
+    try:
+        async with factory() as session:
+            task, claimed_token = await claim_task(session, UUID(task_id))
+            if task is None:
+                existing = await session.get(AiTask, UUID(task_id))
+                if existing is None:
+                    raise AppException(404, "ai_task_not_found", "AI 任务不存在")
+                return {
+                    "task_id": task_id,
+                    "status": getattr(existing.status, "value", existing.status),
+                }
+            if task.status in {
+                AiTaskStatus.SUCCEEDED,
+                AiTaskStatus.CANCELLED,
+            }:
+                return {
+                    "task_id": task_id,
+                    "status": getattr(task.status, "value", task.status),
+                }
+            meeting = await session.get(Meeting, task.meeting_id)
+            if meeting is not None:
+                meeting.analysis_status = AnalysisStatus.PROCESSING
+                await session.commit()
+            state = AnalysisState(
+                task_id=task_id,
+                meeting_id=str(task.meeting_id),
+                org_id=str(task.organization_id),
+                source_version=task.source_version,
+                retry_count=task.retry_count,
+                max_retries=task.max_retries,
+                attempt_token=str(claimed_token),
+                logs=[],
+            )
+        checkpoint_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        async with AsyncPostgresSaver.from_conn_string(checkpoint_url) as checkpointer:
+            await checkpointer.setup()
+            graph = build_analysis_graph(factory, checkpointer)
+            stop_heartbeat = asyncio.Event()
+            heartbeat = asyncio.create_task(
+                _question_lease_heartbeat(
+                    factory, UUID(task_id), claimed_token, stop_heartbeat
+                )
+            )
+            graph_run = asyncio.create_task(
+                graph.ainvoke(state, {"configurable": {"thread_id": task.thread_id}})
+            )
+            try:
+                done, _pending = await asyncio.wait(
+                    {graph_run, heartbeat}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if heartbeat in done:
+                    heartbeat_exception = heartbeat.exception()
+                    if heartbeat_exception is not None:
+                        graph_run.cancel()
+                        await asyncio.gather(graph_run, return_exceptions=True)
+                        raise heartbeat_exception
+                await graph_run
+            finally:
+                stop_heartbeat.set()
+                await asyncio.gather(heartbeat, return_exceptions=True)
+        async with factory() as session:
+            completed = await session.get(AiTask, UUID(task_id))
+            return {
+                "task_id": task_id,
+                "status": getattr(completed.status, "value", completed.status)
+                if completed is not None
+                else AiTaskStatus.FAILED.value,
+            }
+    except Exception as exc:
+        async with factory() as session:
+            task = await session.get(AiTask, UUID(task_id))
+            if task is not None and (claimed_token is None or task.attempt_token == claimed_token):
+                task.retry_count += 1
+                task.error_code = getattr(exc, "code", "analysis_failed")
+                task.error_message = str(exc)[:2000]
+                retryable = not isinstance(exc, AppException) or exc.status_code >= 500
+                if task.retry_count < task.max_retries and retryable:
+                    task.status = AiTaskStatus.RETRYING
+                else:
+                    task.status = AiTaskStatus.FAILED
+                    task.completed_at = datetime.now(timezone.utc)
+                task.attempt_token = None
+                task.lease_expires_at = None
+                meeting = await session.get(Meeting, task.meeting_id)
+                if meeting is not None and task.status is AiTaskStatus.FAILED:
+                    meeting.analysis_status = AnalysisStatus.FAILED
+                await session.commit()
+        raise
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(bind=True, max_retries=2, name="app.worker.tasks.run_analysis")  # type: ignore[untyped-decorator]
+def run_analysis(self: Task, task_id: str) -> dict[str, Any]:
+    try:
+        return asyncio.run(_run_analysis(task_id))
     except Exception as exc:
         retryable = not isinstance(exc, AppException) or exc.status_code >= 500
         if retryable and self.request.retries < self.max_retries:

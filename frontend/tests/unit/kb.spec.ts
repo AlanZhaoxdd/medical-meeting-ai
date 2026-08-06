@@ -14,7 +14,7 @@ describe('publication gate', () => {
   it('requires synced vectors and resolved review items', () => {
     const document = {
       id: 'd1',
-      processing_status: 'IN_REVIEW',
+      status: 'IN_REVIEW',
       vector_sync_status: 'SYNCED',
     } as Parameters<typeof canPublishDocument>[0]
     const approved = [{ document_id: 'd1', review_status: 'APPROVED' }] as Parameters<

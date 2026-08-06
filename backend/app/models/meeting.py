@@ -6,6 +6,7 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Enum,
     ForeignKey,
@@ -60,6 +61,7 @@ class MeetingQuestionType(str, enum.Enum):
 
 class AiTaskType(str, enum.Enum):
     QUESTION_GENERATION = "QUESTION_GENERATION"
+    ANALYSIS = "ANALYSIS"
 
 
 class AiTaskStatus(str, enum.Enum):
@@ -269,6 +271,13 @@ class MeetingQuestion(Base):
     evidence_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    # Ranked position inside the selectable candidate pool (AI-generated only).
+    # Manual questions keep NULL and are directly selectable without swapping.
+    candidate_rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # True when the user picked this question as input for the AI analysis.
+    analysis_selected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     generated_task_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey("ai_tasks.id", ondelete="SET NULL"), nullable=True
     )
@@ -282,3 +291,36 @@ class MeetingQuestion(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MeetingAnalysisRun(Base):
+    """Persisted structured AI analysis result for one analysis task run."""
+
+    __tablename__ = "meeting_analysis_runs"
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "task_id", name="uq_analysis_run_meeting_task"),
+        Index("ix_meeting_analysis_runs_meeting_created", "meeting_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    meeting_id: Mapped[UUID] = mapped_column(
+        ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ai_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    source_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="SUCCEEDED")
+    modules: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    sources: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    insufficient_notes: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

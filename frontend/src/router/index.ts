@@ -18,6 +18,7 @@ const router = createRouter({
         { path: 'meetings/import/:importId/review', name: 'meeting-import-review', component: () => import('@/views/meetings/MeetingImportReviewPlaceholderView.vue') },
         { path: 'meeting-review', name: 'meeting-review', component: () => import('@/views/meetings/MeetingVerificationListView.vue') },
         { path: 'meeting-review/:meetingId', name: 'meeting-review-detail', component: () => import('@/views/meetings/MeetingVerificationDetailView.vue') },
+        { path: 'meeting-review/:meetingId/analysis', name: 'meeting-analysis', component: () => import('@/views/meetings/MeetingAnalysisView.vue') },
         {
           path: 'meetings/minutes/edit',
           name: 'meeting-minutes-edit',

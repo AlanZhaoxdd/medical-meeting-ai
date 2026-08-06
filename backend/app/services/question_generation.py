@@ -10,6 +10,7 @@ from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
 from app.models.kb import Chunk, Document, MeetingImport, TranscriptRevision
 from app.models.meeting import (
@@ -18,6 +19,7 @@ from app.models.meeting import (
     AiTaskType,
     Meeting,
     MeetingQuestion,
+    MeetingQuestionType,
     QuestionEvidence,
 )
 from app.schemas.question_generation import GeneratedQuestion
@@ -598,6 +600,7 @@ async def persist_questions(
     valid_chunks: dict[str, Chunk],
     confirmed_chunk_ids: set[str] | None = None,
     confirmed_document_id: UUID | None = None,
+    candidate_limit: int | None = None,
 ) -> tuple[int, int]:
     meeting = await session.get(Meeting, task.meeting_id)
     if meeting is None:
@@ -713,6 +716,33 @@ async def persist_questions(
             cutpoint_count += 1
         else:
             open_count += 1
+    limit = (
+        candidate_limit
+        if candidate_limit is not None
+        else get_settings().meeting_question_candidate_limit
+    )
+    for qtype in (MeetingQuestionType.CUT_POINT, MeetingQuestionType.OPEN_ENDED):
+        rows = list(
+            (
+                await session.scalars(
+                    select(MeetingQuestion)
+                    .where(
+                        MeetingQuestion.meeting_id == task.meeting_id,
+                        MeetingQuestion.question_type == qtype,
+                        MeetingQuestion.deleted_at.is_(None),
+                        MeetingQuestion.source == "ai",
+                    )
+                    .order_by(
+                        MeetingQuestion.support_score.desc().nullslast(),
+                        MeetingQuestion.created_at.asc(),
+                    )
+                )
+            ).all()
+        )
+        for rank, row in enumerate(rows[:limit], start=1):
+            row.candidate_rank = rank
+        for row in rows[limit:]:
+            row.candidate_rank = None
     return cutpoint_count, open_count
 
 

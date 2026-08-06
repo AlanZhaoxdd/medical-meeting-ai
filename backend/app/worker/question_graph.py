@@ -19,7 +19,14 @@ from app.models.kb import (
     TranscriptRevision,
     TranscriptRevisionBlock,
 )
-from app.models.meeting import AiTask, AiTaskStatus, Meeting, MeetingQuestion, MeetingQuestionType
+from app.models.meeting import (
+    AiTask,
+    AiTaskStatus,
+    AnalysisStatus,
+    Meeting,
+    MeetingQuestion,
+    MeetingQuestionType,
+)
 from app.schemas.question_generation import RetrievalPlan
 from app.services.model_client import ModelServiceClient
 from app.services.question_generation import (
@@ -747,6 +754,9 @@ def build_question_graph(
                     "incomplete_question_types",
                     "切点问题和开放性问题均须至少包含一条合法证据",
                 )
+            meeting = await session.get(Meeting, task.meeting_id)
+            if meeting is not None and meeting.analysis_status is AnalysisStatus.NOT_READY:
+                meeting.analysis_status = AnalysisStatus.READY
             task.status = AiTaskStatus.PENDING_REVIEW
             task.current_stage = "PENDING_REVIEW"
             task.progress = 100
