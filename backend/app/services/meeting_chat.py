@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -98,8 +98,35 @@ class MeetingChatModelClient:
             return await self.generator(payload)
         return await self._invoke(payload)
 
-    async def _invoke(self, payload: dict[str, Any]) -> str:
+    async def stream_answer(self, payload: dict[str, Any]) -> AsyncIterator[str]:
+        """Yield answer text as soon as the configured model produces it."""
+
+        if self.generator is not None:
+            answer = await self.generator(payload)
+            if answer:
+                yield answer
+            return
+
         settings = get_settings()
+        model = self._build_model(settings)
+        saw_content = False
+        async for chunk in model.astream(self._build_prompt(payload)):
+            content = getattr(chunk, "content", "")
+            if isinstance(content, list):
+                content = "".join(
+                    str(part.get("text", ""))
+                    for part in content
+                    if isinstance(part, dict)
+                )
+            text = str(content or "")
+            if text:
+                saw_content = True
+                yield text
+        if not saw_content:
+            raise AppException(502, "chat_empty_response", "问答模型未返回内容")
+
+    @staticmethod
+    def _build_model(settings: Any) -> Any:
         if (
             not settings.llm_base_url
             or not settings.resolved_llm_api_key
@@ -116,17 +143,22 @@ class MeetingChatModelClient:
             "timeout": 60,
             "max_retries": 1,
         }
-        is_deepseek = "api.deepseek.com" in settings.llm_base_url
-        if is_deepseek:
+        if "api.deepseek.com" in settings.llm_base_url:
             options["extra_body"] = {"thinking": {"type": "disabled"}}
-        model = ChatOpenAI(**options)
-        prompt = (
+        return ChatOpenAI(**options)
+
+    @staticmethod
+    def _build_prompt(payload: dict[str, Any]) -> str:
+        return (
             f"{CHAT_SYSTEM_PROMPT}\n"
             f"用户问题：{payload['question']}\n"
             f"输入材料："
-            f"{json.dumps(payload['materials'], ensure_ascii=False, default=str)[:120000]}"
+            f"{json.dumps(payload, ensure_ascii=False, default=str)[:120000]}"
         )
-        response = await model.ainvoke(prompt)
+
+    async def _invoke(self, payload: dict[str, Any]) -> str:
+        settings = get_settings()
+        response = await self._build_model(settings).ainvoke(self._build_prompt(payload))
         content = getattr(response, "content", None)
         if isinstance(content, list):
             content = "".join(
@@ -438,6 +470,33 @@ def build_chat_materials(
     }
 
 
+def _build_completed_chat_response(
+    *,
+    conversation_id: UUID,
+    answer: str,
+    sources: list[dict[str, Any]],
+) -> MeetingChatResponse:
+    normalized_answer = answer.strip() or INSUFFICIENT_ANSWER
+    normalized_sources: list[dict[str, Any]] = []
+    for index, item in enumerate(sources, start=1):
+        normalized = {**item, "index": item.get("index") or index}
+        if not normalized.get("id"):
+            normalized["id"] = f"src-{normalized.get('chunk_id') or index}"
+        normalized_sources.append(normalized)
+    return MeetingChatResponse(
+        conversation_id=conversation_id,
+        message_id=uuid4(),
+        answer=normalized_answer,
+        status=(
+            "INSUFFICIENT_CONTEXT"
+            if normalized_answer == INSUFFICIENT_ANSWER
+            else "COMPLETED"
+        ),
+        sources=[MeetingChatSource.model_validate(item) for item in normalized_sources],
+        suggested_questions=[],
+    )
+
+
 async def generate_chat_answer(
     *,
     question: str,
@@ -469,23 +528,80 @@ async def generate_chat_answer(
     except Exception as exc:
         raise AppException(502, "chat_generation_failed", "问答生成失败，请稍后重试") from exc
 
-    answer = answer.strip()
-    if not answer:
-        answer = INSUFFICIENT_ANSWER
-    normalized_sources: list[dict[str, Any]] = []
-    for index, item in enumerate(sources, start=1):
-        normalized = {**item, "index": item.get("index") or index}
-        if not normalized.get("id"):
-            normalized["id"] = f"src-{normalized.get('chunk_id') or index}"
-        normalized_sources.append(normalized)
-    return MeetingChatResponse(
+    response = _build_completed_chat_response(
         conversation_id=conversation,
-        message_id=message_id,
         answer=answer,
-        status="INSUFFICIENT_CONTEXT" if answer == INSUFFICIENT_ANSWER else "COMPLETED",
-        sources=[MeetingChatSource.model_validate(item) for item in normalized_sources],
-        suggested_questions=[],
+        sources=sources,
     )
+    response.message_id = message_id
+    return response
+
+
+async def stream_meeting_question(
+    session: AsyncSession,
+    *,
+    meeting_id: UUID,
+    payload: MeetingChatRequest,
+    organization_id: UUID,
+    model_client: MeetingChatModelClient | None = None,
+    retriever: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None,
+    reranker: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Run the grounded chat flow and emit stage, delta and done events."""
+
+    conversation = payload.conversation_id or uuid4()
+    need_kb = payload.scope == "MEETING_AND_KB"
+    yield {"type": "stage", "stage": "RETRIEVING_MEETING"}
+    context = await load_chat_context(
+        session,
+        meeting_id=meeting_id,
+        organization_id=organization_id,
+        need_kb=need_kb,
+    )
+    effective_need_kb = need_kb and context.get("kb") is not None
+    if effective_need_kb:
+        yield {"type": "stage", "stage": "RETRIEVING_KB"}
+    chunks = await retrieve_chat_evidence(
+        session,
+        context=context,
+        question=payload.question,
+        need_kb=effective_need_kb,
+        retriever=retriever,
+        reranker=reranker,
+    )
+    sources = build_chat_sources(context, chunks)
+    if not sources:
+        response = MeetingChatResponse(
+            conversation_id=conversation,
+            message_id=uuid4(),
+            answer=INSUFFICIENT_ANSWER,
+            status="INSUFFICIENT_CONTEXT",
+            sources=[],
+            suggested_questions=[],
+        )
+        yield {"type": "done", **response.model_dump(mode="json")}
+        return
+
+    yield {"type": "stage", "stage": "ORGANIZING"}
+    materials = build_chat_materials(payload.question, context, sources)
+    client = model_client or MeetingChatModelClient()
+    answer_parts: list[str] = []
+    yield {"type": "stage", "stage": "STREAMING"}
+    try:
+        async for delta in client.stream_answer(materials):
+            answer_parts.append(delta)
+            yield {"type": "delta", "delta": delta}
+    except AppException:
+        raise
+    except Exception as exc:
+        raise AppException(502, "chat_generation_failed", "问答生成失败，请稍后重试") from exc
+
+    response = _build_completed_chat_response(
+        conversation_id=conversation,
+        answer="".join(answer_parts),
+        sources=sources,
+    )
+    yield {"type": "done", **response.model_dump(mode="json")}
 
 
 async def answer_meeting_question(

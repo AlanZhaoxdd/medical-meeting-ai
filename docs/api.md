@@ -28,6 +28,27 @@ Access Token 为短期 JWT；Refresh Token 只以 SHA-256 摘要保存，刷新�
 
 owner/admin 可管理成员；只有 owner 可变更 owner 角色，且 owner 不能被直接移除。
 
+## 会议成果导出
+
+- `GET /meetings/{meeting_id}/exports` 查看导出历史（分页）
+- `POST /meetings/{meeting_id}/exports/text` 发起文字版导出（DOCX/PDF，异步任务）
+- `GET /meetings/{meeting_id}/exports/text/preview` 获取与导出内容一致的预览
+- `POST /meetings/{meeting_id}/exports/ppt/outline` 异步生成 PPT 大纲
+- `GET|PUT /meetings/{meeting_id}/exports/ppt/outline` 获取 / 保存编辑后大纲
+- `POST /meetings/{meeting_id}/exports/ppt/outline/regenerate-page` 重新生成单页
+- `POST /meetings/{meeting_id}/exports/ppt` 发起 PPTX 导出
+- `POST /meetings/{meeting_id}/charts/plan` 发起图表分析（LLM 分类 + 程序统计）
+- `GET /meetings/{meeting_id}/charts` 获取已验证图表（ChartSpec）
+- `GET /meetings/{meeting_id}/charts/{chart_id}/image?fmt=png|svg` 下载图表图片
+- `GET /exports/{export_id}` 查询任务状态与进度
+- `POST /exports/{export_id}/retry` 重试失败任务
+- `POST /exports/{export_id}/cancel` 取消运行中任务
+- `GET /exports/{export_id}/download` 获取 MinIO 预签名下载地址
+
+导出任务统一为异步任务：创建后轮询 `GET /exports/{export_id}`，任务经
+`outbox_events`（`export.requested`）由 Celery `run_export` 消费，阶段包含
+`PENDING → ANALYZING → GENERATING → RENDERING → COMPLETED`。
+
 ## 文档与任务
 
 - `POST|GET /knowledge-bases/{kb_id}/documents`

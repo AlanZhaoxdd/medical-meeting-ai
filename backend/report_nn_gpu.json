@@ -1,0 +1,58 @@
+{
+  "environment": {
+    "device": "cuda",
+    "embedding_model": "/models/huggingface/bge-m3",
+    "embedding_strategy": "single_pass_pool",
+    "reranker_model": "BAAI/bge-reranker-v2-m3",
+    "bge_batch_size": 8
+  },
+  "queries": 41,
+  "top_k": [
+    1,
+    3,
+    5,
+    10
+  ],
+  "params": {
+    "dense_limit": 50,
+    "sparse_limit": 50,
+    "fusion_limit": 15,
+    "ef": 128,
+    "rerank_top": 5
+  },
+  "results": {
+    "dense_only": {
+      "n": 41,
+      "hit@1": 0.439,
+      "hit@3": 0.561,
+      "hit@5": 0.6098,
+      "hit@10": 0.9024,
+      "mrr@10": 0.5462
+    },
+    "sparse_only": {
+      "n": 41,
+      "hit@1": 0.4878,
+      "hit@3": 0.7317,
+      "hit@5": 0.7805,
+      "hit@10": 0.9512,
+      "mrr@10": 0.6269
+    },
+    "hybrid": {
+      "n": 41,
+      "hit@1": 0.4634,
+      "hit@3": 0.6341,
+      "hit@5": 0.7561,
+      "hit@10": 0.9268,
+      "mrr@10": 0.5891
+    },
+    "hybrid_rerank": {
+      "n": 41,
+      "hit@1": 0.6585,
+      "hit@3": 0.8537,
+      "hit@5": 0.9268,
+      "hit@10": 0.9268,
+      "mrr@10": 0.761
+    }
+  },
+  "golden": "/src/eval_set_nn.json"
+}

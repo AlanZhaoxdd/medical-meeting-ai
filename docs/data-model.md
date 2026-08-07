@@ -12,6 +12,7 @@ PostgreSQL 是唯一权威数据库。
 | 审计与检索 | `audit_events`, `retrieval_logs`, `outbox_events` |
 | 既有会议 | `meetings`（新增可空 `knowledge_base_id` 外键） |
 | 会议核验 | `meeting_questions` |
+| 会议成果导出 | `export_records`, `ppt_outlines`, `chart_specs` |
 
 结构化扩展字段、来源引用和定位信息使用 JSONB，但租户边界、外键、状态、版本和常用过滤字段保持类型化列并建立索引。
 
@@ -31,4 +32,8 @@ PostgreSQL 是唯一权威数据库。
 - `documents.active_transcript_revision_id` 只指向确认稿；`meeting_imports.meeting_id` 保证重复确认返回同一正式会议。
 - 模板 `(template_id, version)` 唯一，任务冻结实际模板版本。
 - Outbox 和 Graph 节点均有唯一幂等键。
+- `export_records` 保存导出任务、配置与文件元数据；DOCX/PDF/PPTX/PNG/SVG 二进制只存 MinIO，
+  `storage_key` 指向对象存储，PostgreSQL 不保存大文件。`config` 为导出选项快照。
+- `ppt_outlines` 每个会议每个分析版本唯一，保存可编辑的大纲草稿；`chart_specs`
+  保存 LLM 分类结果经程序聚合后的已验证图表数据（含逐项证据与统计口径）。
 - MinIO 仅保存原件；Milvus 仅保存向量与过滤字段。

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleCheck, Collection, DataAnalysis, Document, Expand, Fold, SwitchButton, Upload } from '@element-plus/icons-vue'
+import { ChatLineRound, CircleCheck, Collection, DataAnalysis, Document, Expand, Files, Fold, Histogram, QuestionFilled, SwitchButton, Upload } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -12,7 +12,27 @@ const router = useRouter()
 const narrowScreen = ref(false)
 let mediaQuery: MediaQueryList | undefined
 const navigationCollapsed = computed(() => narrowScreen.value || appStore.sidebarCollapsed)
-const activeNavigation = computed(() => route.path.startsWith('/meetings/import/') ? '/meetings/minutes/edit' : route.path.startsWith('/meeting-review') ? '/meeting-review' : route.path)
+const minutesTabs = computed(() => {
+  const meetingId = String(route.params.meetingId || '')
+  const base = meetingId ? `/meeting-review/${meetingId}` : '/meeting-review'
+  return {
+    info: base,
+    cutPoint: meetingId ? `${base}/questions/cut-point` : '/meeting-review',
+    openEnded: meetingId ? `${base}/questions/open-ended` : '/meeting-review',
+  }
+})
+const activeNavigation = computed(() => {
+  const path = String(route.path)
+  if (path.startsWith('/meetings/import')) return '/meetings/import'
+  if (route.path.startsWith('/meeting-review')) {
+    if (path.endsWith('/questions/cut-point')) return minutesTabs.value.cutPoint
+    if (path.endsWith('/questions/open-ended')) return minutesTabs.value.openEnded
+    return path === '/meeting-review' ? '/meeting-review' : minutesTabs.value.info
+  }
+  if (path.startsWith('/meeting-analysis')) return '/meeting-analysis'
+  if (path.startsWith('/meeting-export')) return '/meeting-export'
+  return path
+})
 
 function updateScreen(event: MediaQueryListEvent | MediaQueryList) {
   narrowScreen.value = event.matches
@@ -43,16 +63,28 @@ async function logout() {
         <el-menu-item index="/meetings/import" aria-label="导入会议" title="导入会议">
           <el-icon><Upload /></el-icon><span>导入会议</span>
         </el-menu-item>
-        <el-menu-item index="/meetings/minutes/edit" aria-label="会议纪要编辑" title="会议纪要编辑">
-          <el-icon><Document /></el-icon><span>会议纪要编辑</span>
+        <el-sub-menu index="minutes" class="nav-minutes" popper-class="nav-popup" aria-label="会议纪要编辑" title="会议纪要编辑">
+          <template #title><el-icon><Document /></el-icon><span>会议纪要编辑</span></template>
+          <el-menu-item :index="minutesTabs.info" class="nav-minutes-info" aria-label="核验基本信息" title="核验基本信息">
+            <el-icon><CircleCheck /></el-icon><span>核验基本信息</span>
+          </el-menu-item>
+          <el-menu-item :index="minutesTabs.cutPoint" class="nav-minutes-cut-point" aria-label="切点问题" title="切点问题">
+            <el-icon><QuestionFilled /></el-icon><span>切点问题</span>
+          </el-menu-item>
+          <el-menu-item :index="minutesTabs.openEnded" class="nav-minutes-open-ended" aria-label="开放性问题" title="开放性问题">
+            <el-icon><ChatLineRound /></el-icon><span>开放性问题</span>
+          </el-menu-item>
+        </el-sub-menu>
+        <el-menu-item index="/meeting-analysis" aria-label="AI 纪要分析" title="AI 纪要分析">
+          <el-icon><DataAnalysis /></el-icon><span>AI 纪要分析</span>
         </el-menu-item>
-        <el-menu-item index="/meeting-review" aria-label="基本信息概览" title="基本信息概览">
-          <el-icon><CircleCheck /></el-icon><span>基本信息概览</span>
+        <el-menu-item index="/meeting-export" aria-label="会议成果导出" title="会议成果导出">
+          <el-icon><Files /></el-icon><span>会议成果导出</span>
         </el-menu-item>
         <el-sub-menu index="settings" class="nav-settings" popper-class="nav-popup" aria-label="设置" title="设置">
           <template #title><el-icon><Collection /></el-icon><span>设置</span></template>
           <el-menu-item index="/knowledge-bases" class="nav-kb" aria-label="知识库管理"><el-icon><Collection /></el-icon><span>知识库管理</span></el-menu-item>
-          <el-menu-item index="/benchmarks" class="nav-benchmarks" aria-label="性能评测" title="性能评测"><el-icon><DataAnalysis /></el-icon><span>性能评测</span></el-menu-item>
+          <el-menu-item index="/benchmarks" class="nav-benchmarks" aria-label="性能评测" title="性能评测"><el-icon><Histogram /></el-icon><span>性能评测</span></el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>

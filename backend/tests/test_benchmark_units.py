@@ -3,6 +3,7 @@ import pytest
 from app.api.v1.benchmarks import _validate_params
 from app.core.exceptions import AppException
 from app.services.benchmark import _metrics, _rank, describe, percentiles
+from app.services.ragas_eval import _sample_entries, load_qa_entries
 
 
 def test_percentiles_and_describe() -> None:
@@ -34,11 +35,35 @@ def test_validate_benchmark_params() -> None:
     _validate_params("embedding_throughput", {"texts": ["a"]})
     _validate_params("search_latency", {"queries": ["q"]})
     _validate_params("retrieval_quality", {"entries": [{"query": "q"}]})
+    _validate_params("ragas_quality", {"meeting_id": "m", "dataset_file": "x.json"})
+    _validate_params("ragas_quality", {"meeting_id": "m", "entries": [{"question": "q"}]})
     for kind, params in (
         ("embedding_throughput", {}),
         ("search_latency", {}),
         ("retrieval_quality", {}),
+        ("ragas_quality", {"meeting_id": "m"}),
     ):
         with pytest.raises(AppException) as excinfo:
             _validate_params(kind, params)
         assert excinfo.value.status_code == 422
+
+
+def test_load_qa_entries_normalizes_aliases() -> None:
+    entries = load_qa_entries(
+        entries=[
+            {"question": "问题一", "correctAnswer": "答案一", "questionType": "open_ended"},
+            {"user_input": "问题二", "reference": "答案二"},
+            {"question": "没有答案", "options": "A"},
+        ]
+    )
+    assert [item["question"] for item in entries] == ["问题一", "问题二"]
+    assert [item["reference"] for item in entries] == ["答案一", "答案二"]
+    assert entries[0]["question_type"] == "open_ended"
+
+
+def test_sample_entries_respects_limit_and_seed() -> None:
+    entries = [{"index": index} for index in range(10)]
+    assert _sample_entries(entries, max_items=0) == entries
+    sampled = _sample_entries(entries, max_items=3, seed=42)
+    assert len(sampled) == 3
+    assert _sample_entries(entries, max_items=3, seed=42) == sampled

@@ -839,6 +839,11 @@ async def run_graph(job_id: str, *, resume: bool = False) -> None:
             )
             if acquired:
                 lock_connection = candidate
+                # pg_try_advisory_lock is session-scoped, so commit the implicit
+                # SELECT transaction here. Leaving it open ("idle in transaction")
+                # blocks checkpointer.setup()'s CREATE INDEX CONCURRENTLY, which
+                # waits for other open transactions -> first-run ingestion hung.
+                await lock_connection.commit()
                 break
             await candidate.close()
             await asyncio.sleep(0.25)

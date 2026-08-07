@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowDown, Delete, MagicStick, Plus, RefreshLeft } from '@element-plus/icons-vue'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ChatComposer from '@/components/analysis/ChatComposer.vue'
 import ChatMessageItem from '@/components/analysis/ChatMessageItem.vue'
@@ -100,7 +100,11 @@ async function send(text?: string) {
     sources: [],
     createdAt: new Date().toISOString(),
   }
-  const assistantMessage: ChatMessage = {
+  // `messages` is a ref containing a reactive array. Keep the assistant
+  // message itself reactive as well: mutating the plain object created before
+  // `push()` can bypass Vue's proxy and leave the UI stuck in `streaming`,
+  // even though the transport has already called onDone successfully.
+  const assistantMessage = reactive<ChatMessage>({
     id: generateMessageId(),
     role: 'assistant',
     content: '',
@@ -108,7 +112,7 @@ async function send(text?: string) {
     stage: 'IDLE',
     sources: [],
     createdAt: new Date().toISOString(),
-  }
+  })
   messages.value.push(userMessage, assistantMessage)
   await nextTick()
   scrollToBottom()
@@ -153,12 +157,23 @@ async function send(text?: string) {
       if (apiError.status === 401) sessionExpired.value = true
       assistantMessage.status = 'failed'
       assistantMessage.stage = undefined
-      assistantMessage.error = apiError.status === 401 ? '会话已过期，请重新登录后继续问答。' : apiError.message
+      const originalMessage = error instanceof Error ? error.message : ''
+      assistantMessage.error =
+        apiError.status === 401
+          ? '会话已过期，请重新登录后继续问答。'
+          : apiError.message !== '请求失败，请稍后重试。'
+            ? apiError.message
+            : originalMessage || apiError.message
     },
   }
 
   try {
     await transport.chat(payload, context, handlers, controller.signal)
+  } catch (error) {
+    // The real JSON/SSE transports reject when the request fails. Forward the
+    // rejection to the same handler used by the mock transport so the pending
+    // assistant message does not remain stuck in `streaming` forever.
+    handlers.onError?.(error)
   } finally {
     if (activeController.value === controller) activeController.value = null
   }

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.auth import router as auth_router
 from app.api.v1.benchmarks import router as benchmarks_router
 from app.api.v1.documents import router as documents_router
+from app.api.v1.exports import router as exports_router
 from app.api.v1.jobs import router as jobs_router
 from app.api.v1.knowledge_bases import router as knowledge_bases_router
 from app.api.v1.knowledge_items import router as knowledge_items_router
@@ -28,3 +29,4 @@ router.include_router(search_router)
 router.include_router(jobs_router)
 router.include_router(organizations_router)
 router.include_router(benchmarks_router)
+router.include_router(exports_router)

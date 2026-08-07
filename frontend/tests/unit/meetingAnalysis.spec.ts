@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { readChatResponse } from '@/api/meetingAnalysis'
 import { buildMockMinutesDocument, mockChatTransport } from '@/api/meetingAnalysis.mock'
 import { normalizeCandidate } from '@/api/meetingVerification'
 import type { AnalysisModule, ChatHandlers, MeetingAnalysisContext, MeetingChatRequest, RagSource } from '@/types/meetingAnalysis'
@@ -61,6 +62,24 @@ function contextFixture(overrides: Partial<MeetingAnalysisContext> = {}): Meetin
 }
 
 describe('meeting analysis formatting helpers', () => {
+  it('reads JSON-string and data-wrapped chat responses', () => {
+    const response = readChatResponse(
+      JSON.stringify({
+        data: {
+          conversation_id: 'conversation-1',
+          message_id: 'message-1',
+          answer: '答案 [1]',
+          status: 'COMPLETED',
+          sources: [{ index: 1, type: 'transcript', title: '会议片段', snippet: '证据' }],
+        },
+      }),
+    )
+    expect(response.conversationId).toBe('conversation-1')
+    expect(response.messageId).toBe('message-1')
+    expect(response.answer).toBe('答案 [1]')
+    expect(response.sources).toHaveLength(1)
+  })
+
   it('formats milliseconds into time labels', () => {
     expect(formatMilliseconds(65_000)).toBe('01:05')
     expect(formatMilliseconds(3_661_000)).toBe('01:01:01')

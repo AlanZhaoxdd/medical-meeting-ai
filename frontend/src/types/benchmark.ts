@@ -1,4 +1,8 @@
-export type BenchmarkKind = 'retrieval_quality' | 'search_latency' | 'embedding_throughput'
+export type BenchmarkKind =
+  | 'retrieval_quality'
+  | 'search_latency'
+  | 'embedding_throughput'
+  | 'ragas_quality'
 export type BenchmarkStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'DISPATCH_FAILED'
 
 export interface BenchmarkEnvironment {

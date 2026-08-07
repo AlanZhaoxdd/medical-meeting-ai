@@ -18,7 +18,17 @@ const router = createRouter({
         { path: 'meetings/import/:importId/review', name: 'meeting-import-review', component: () => import('@/views/meetings/MeetingImportReviewPlaceholderView.vue') },
         { path: 'meeting-review', name: 'meeting-review', component: () => import('@/views/meetings/MeetingVerificationListView.vue') },
         { path: 'meeting-review/:meetingId', name: 'meeting-review-detail', component: () => import('@/views/meetings/MeetingVerificationDetailView.vue') },
-        { path: 'meeting-review/:meetingId/analysis', name: 'meeting-analysis', component: () => import('@/views/meetings/MeetingAnalysisView.vue') },
+        { path: 'meeting-review/:meetingId/questions/cut-point', name: 'meeting-questions-cut-point', component: () => import('@/views/meetings/MeetingVerificationDetailView.vue') },
+        { path: 'meeting-review/:meetingId/questions/open-ended', name: 'meeting-questions-open-ended', component: () => import('@/views/meetings/MeetingVerificationDetailView.vue') },
+        // AI 纪要分析：独立列表页 + 会议工作区
+        { path: 'meeting-analysis', name: 'meeting-analysis-list', component: () => import('@/views/meetings/MeetingAnalysisListView.vue') },
+        { path: 'meeting-analysis/:meetingId', name: 'meeting-analysis', component: () => import('@/views/meetings/MeetingAnalysisView.vue') },
+        // 会议成果导出：独立列表页 + 会议工作区
+        { path: 'meeting-export', name: 'meeting-export-list', component: () => import('@/views/meetings/MeetingExportListView.vue') },
+        { path: 'meeting-export/:meetingId', name: 'meeting-exports', component: () => import('@/views/meetings/MeetingExportView.vue') },
+        // 旧路径兼容重定向
+        { path: 'meeting-review/:meetingId/analysis', redirect: (to) => ({ name: 'meeting-analysis', params: { meetingId: String(to.params.meetingId) } }) },
+        { path: 'meeting-review/:meetingId/exports', redirect: (to) => ({ name: 'meeting-exports', params: { meetingId: String(to.params.meetingId) } }) },
         {
           path: 'meetings/minutes/edit',
           name: 'meeting-minutes-edit',
@@ -47,7 +57,7 @@ const router = createRouter({
           name: 'meeting-edit',
           redirect: (to) => ({ name: 'meeting-review-detail', params: { meetingId: String(to.params.id) } }),
         },
-        { path: 'analysis', name: 'analysis-placeholder', component: () => import('@/views/AnalysisPlaceholderView.vue') },
+        { path: 'analysis', redirect: { name: 'meeting-analysis-list' } },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/meetings/import' },

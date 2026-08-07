@@ -26,9 +26,17 @@ const kindOptions: Array<{ value: BenchmarkKind; label: string }> = [
   { value: 'retrieval_quality', label: '检索质量（Recall@k / MRR）' },
   { value: 'search_latency', label: '检索延迟（p50/p95/p99 + QPS）' },
   { value: 'embedding_throughput', label: '嵌入吞吐（texts/sec）' },
+  { value: 'ragas_quality', label: 'RAG 端到端质量（Ragas）' },
 ]
 
 const kindLabels = Object.fromEntries(kindOptions.map((item) => [item.value, item.label]))
+const ragasMetricOptions: Array<{ value: string; label: string }> = [
+  { value: 'faithfulness', label: '忠实度 faithfulness' },
+  { value: 'answer_relevancy', label: '答案相关性 answer_relevancy' },
+  { value: 'context_precision', label: '上下文精度 context_precision' },
+  { value: 'context_recall', label: '上下文召回 context_recall' },
+  { value: 'semantic_similarity', label: '语义相似度 semantic_similarity' },
+]
 const statusLabels: Record<BenchmarkStatus, string> = {
   PENDING: '排队中',
   RUNNING: '运行中',
@@ -47,6 +55,19 @@ const form = reactive({
   iterations: 10,
   topK: '1,3,5,10',
   rerank: true,
+  ragasDatasetFile: 'eval-datasets-1786019104793.json',
+  ragasEntriesText: '',
+  meetingId: '',
+  scope: 'MEETING_AND_KB',
+  ragasMetrics: [
+    'faithfulness',
+    'answer_relevancy',
+    'context_precision',
+    'context_recall',
+    'semantic_similarity',
+  ],
+  maxItems: 0,
+  seed: 42,
 })
 
 async function load() {
@@ -96,6 +117,43 @@ function buildParams(): Record<string, unknown> {
     const queries = form.queriesText.split('\n').map((item) => item.trim()).filter(Boolean)
     if (!queries.length) throw new Error('请至少输入一条 query')
     return { queries, iterations: form.iterations, rerank: form.rerank }
+  }
+  if (form.kind === 'ragas_quality') {
+    if (!form.meetingId.trim()) throw new Error('请填写会议 ID（meeting_id）')
+    if (!form.ragasDatasetFile.trim() && !form.ragasEntriesText.trim()) {
+      throw new Error('请填写测试集文件，或直接粘贴 entries JSON')
+    }
+    const params: Record<string, unknown> = {
+      meeting_id: form.meetingId.trim(),
+      scope: form.scope,
+      metrics: form.ragasMetrics,
+      max_items: form.maxItems,
+      seed: form.seed,
+    }
+    if (form.ragasDatasetFile.trim()) params.dataset_file = form.ragasDatasetFile.trim()
+    if (form.ragasEntriesText.trim()) {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(form.ragasEntriesText)
+      } catch (error) {
+        throw new Error(`测试集 JSON 解析失败：${error instanceof Error ? error.message : '语法错误'}`)
+      }
+      const entries = Array.isArray(parsed) ? parsed : (parsed as { entries?: unknown }).entries
+      if (!Array.isArray(entries) || !entries.length) throw new Error('测试集需要非空 entries 列表')
+      if (
+        !entries.every(
+          (entry) =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            Boolean((entry as Record<string, unknown>).question) &&
+            Boolean((entry as Record<string, unknown>).correctAnswer),
+        )
+      ) {
+        throw new Error('测试集每条需要 question / correctAnswer')
+      }
+      params.entries = entries
+    }
+    return params
   }
   const texts = form.corpusText.split('\n').map((item) => item.trim()).filter(Boolean)
   if (!texts.length) throw new Error('请至少输入一条文本')
@@ -165,6 +223,13 @@ function summary(run: BenchmarkRun): string {
     const stages = metrics.stages_ms as Record<string, { p95: number; qps: number }> | undefined
     const total = stages?.total
     return total ? `p95 ${total.p95}ms · QPS ${total.qps}` : '—'
+  }
+  if (run.kind === 'ragas_quality') {
+    const m = metrics.metrics as Record<string, number> | undefined
+    if (!m) return '—'
+    const fmt = (value: number | undefined) =>
+      typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '—'
+    return `faithfulness ${fmt(m.faithfulness)} · context_recall ${fmt(m.context_recall)} · similarity ${fmt(m.semantic_similarity)}`
   }
   const batches = metrics.batch_ms as Record<string, { texts_per_second: number }>
   const best = Object.values(batches).reduce(
@@ -283,10 +348,46 @@ onBeforeUnmount(stopPolling)
           <el-form-item label="batch 列表"><el-input v-model="form.batchSizes" /></el-form-item>
         </template>
 
-        <el-form-item v-if="form.kind !== 'embedding_throughput'" label="包含重排">
+        <template v-if="form.kind === 'ragas_quality'">
+          <el-form-item label="会议 ID（meeting_id）">
+            <el-input v-model="form.meetingId" placeholder="例如：7a6ed448-35a1-448f-bd6b-c4ad74e21b03" />
+          </el-form-item>
+          <el-form-item label="检索范围">
+            <el-select v-model="form.scope" style="width: 100%">
+              <el-option value="MEETING_AND_KB" label="会议纪要 + 知识库" />
+              <el-option value="CURRENT_MEETING" label="仅当前会议" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="测试集文件（backend/eval_data 下）">
+            <el-input v-model="form.ragasDatasetFile" placeholder="eval-datasets-1786019104793.json" />
+          </el-form-item>
+          <el-form-item label="或直接粘贴测试集 entries JSON（可选）">
+            <el-input
+              v-model="form.ragasEntriesText"
+              type="textarea"
+              :rows="5"
+              placeholder='[{"question":"...","correctAnswer":"..."}]'
+            />
+          </el-form-item>
+          <el-form-item label="Ragas 指标">
+            <el-checkbox-group v-model="form.ragasMetrics">
+              <el-checkbox v-for="item in ragasMetricOptions" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+          <el-form-item label="样本上限（0 = 全部）">
+            <el-input-number v-model="form.maxItems" :min="0" :max="5000" />
+          </el-form-item>
+          <el-form-item label="采样种子">
+            <el-input-number v-model="form.seed" :min="0" />
+          </el-form-item>
+        </template>
+
+        <el-form-item v-if="form.kind === 'search_latency'" label="包含重排">
           <el-switch v-model="form.rerank" />
         </el-form-item>
-        <el-form-item v-if="form.kind !== 'retrieval_quality'" label="迭代次数">
+        <el-form-item v-if="form.kind === 'search_latency' || form.kind === 'embedding_throughput'" label="迭代次数">
           <el-input-number v-model="form.iterations" :min="3" :max="500" />
         </el-form-item>
       </el-form>

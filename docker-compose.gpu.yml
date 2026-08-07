@@ -1,11 +1,14 @@
+name: medical-meeting-ai
+
 services:
   bge-models:
     build:
-      context: ./model-service
       args:
-        # CUDA wheel index for the model-service image. Switch to cu128/cu130
-        # when the host driver supports a newer CUDA runtime.
-        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu126
+        # CUDA wheel index for the model-service image. Replaces the CPU torch
+        # pinned in uv.lock (SJTU domestic mirror of download.pytorch.org).
+        # Override per host driver, for example:
+        #   TORCH_INDEX_URL=https://mirror.sjtu.edu.cn/pytorch-wheels/cu128
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://mirror.sjtu.edu.cn/pytorch-wheels/cu126}
     environment:
       BGE_DEVICE: cuda
     deploy:

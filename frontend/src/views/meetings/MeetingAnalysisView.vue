@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Back, Download, RefreshRight } from '@element-plus/icons-vue'
+import { Back, Download, Files, RefreshRight } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -190,6 +190,10 @@ function openSource(source: RagSource) {
   selectedSource.value = source
 }
 
+function openExportWorkspace() {
+  void router.push({ name: 'meeting-exports', params: { meetingId: meetingId.value } })
+}
+
 function onAppToast(event: Event) {
   const detail = (event as CustomEvent<string>).detail
   if (detail) ElMessage.success(detail)
@@ -217,7 +221,7 @@ onBeforeUnmount(() => {
     <template v-if="context">
       <div class="page-header analysis-header">
         <div class="header-left">
-          <el-button link type="primary" :icon="Back" @click="router.push({ name: 'meeting-review' })">返回会议管理</el-button>
+          <el-button link type="primary" :icon="Back" @click="router.push({ name: 'meeting-analysis-list' })">返回 AI 纪要列表</el-button>
           <p class="eyebrow">AI MEETING ANALYSIS</p>
           <h1 class="page-title">AI 纪要分析</h1>
           <p class="page-subtitle">{{ context.meeting.title }}</p>
@@ -231,6 +235,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="header-actions">
           <el-button :icon="RefreshRight" :loading="reanalyzing" :disabled="analysisStatus === 'not_ready' || analysisStatus === 'ready' || analysisBusy" @click="reanalyze">重新分析</el-button>
+          <el-button :icon="Files" :disabled="!minutesModule || minutesModule.state !== 'ready'" @click="openExportWorkspace">成果导出</el-button>
           <el-button type="primary" :icon="Download" :loading="exporting" @click="exportMinutes">导出纪要</el-button>
         </div>
       </div>

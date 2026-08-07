@@ -28,6 +28,7 @@ import { selectionTypeCounts } from '@/utils/meetingAnalysis'
 import { toApiError } from '@/utils/errors'
 
 type QuestionTypeKey = 'cut_point' | 'open_ended'
+type VerificationTab = 'info' | 'cut-point' | 'open-ended'
 const ANALYSIS_ACTIVE_STATUSES = ['QUEUED', 'RUNNING', 'RETRYING']
 const isAnalysisActive = (status?: string | null) => ANALYSIS_ACTIVE_STATUSES.includes(String(status ?? '').toUpperCase())
 
@@ -35,6 +36,22 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const meetingId = computed(() => String(route.params.meetingId))
+const activeTab = computed<VerificationTab>(() => {
+  const path = String(route.path)
+  if (path.endsWith('/questions/cut-point')) return 'cut-point'
+  if (path.endsWith('/questions/open-ended')) return 'open-ended'
+  return 'info'
+})
+function onTabChange(name: string | number) {
+  const next = String(name) as VerificationTab
+  if (next === activeTab.value) return
+  const target = next === 'cut-point'
+    ? { name: 'meeting-questions-cut-point', params: { meetingId: meetingId.value } }
+    : next === 'open-ended'
+      ? { name: 'meeting-questions-open-ended', params: { meetingId: meetingId.value } }
+      : { name: 'meeting-review-detail', params: { meetingId: meetingId.value } }
+  void router.replace(target)
+}
 const snapshot = ref<Awaited<ReturnType<typeof meetingVerificationApi.get>>>()
 const loading = ref(false)
 const saving = ref(false)
@@ -483,7 +500,7 @@ onBeforeRouteLeave(allowNavigation)
       <template #default><el-button size="small" @click="load">重试</el-button></template>
     </el-alert>
     <template v-if="snapshot">
-      <div class="flow-hint">选择会议 <span>→</span> 核验基本信息 <span>→</span> 选择带入分析的问题 <span>→</span> AI 纪要分析</div>
+      <div class="flow-hint">选择会议 <span>→</span> 核验基本信息 <span>→</span> 切点问题 / 开放性问题 <span>→</span> AI 纪要分析</div>
       <div class="page-header">
         <div>
           <el-button link @click="router.push({ name: 'meeting-review' })">← 返回列表</el-button>
@@ -496,8 +513,7 @@ onBeforeRouteLeave(allowNavigation)
           <el-button :disabled="!analysisSucceeded" type="primary" @click="router.push({ name: 'meeting-analysis', params: { meetingId } })">AI 纪要分析</el-button>
         </div>
       </div>
-      <div class="detail-stack">
-        <MeetingInfoPanel :meeting="snapshot.meeting" :expanded="infoExpanded" @toggle="infoExpanded = !infoExpanded" />
+      <div class="generation-stack">
         <el-card v-if="generationTask && generationInProgress" class="generation-card" shadow="never">
           <div class="generation-heading">
             <div>
@@ -521,25 +537,61 @@ onBeforeRouteLeave(allowNavigation)
         <el-alert v-if="generationError" class="generation-alert" type="warning" :closable="false" title="问题生成状态暂时不可用">
           <template #default><p>{{ generationError }}</p><el-button size="small" @click="refreshTask">刷新</el-button></template>
         </el-alert>
+      </div>
 
-        <QuestionSelectionPanel
-          :cut-points="displayCutPoints"
-          :open-ended="displayOpenEnded"
-          :selected-ids="selectedIds"
-          :swap-loading-id="swapLoadingId"
-          :pool-exhausted="poolExhausted"
-          :show-more-available="showMoreAvailable"
-          :readonly="actionReadonly"
-          :saving="saving || candidateLoading"
-          @select="toggleSelect"
-          @swap="swapCandidate"
-          @show-more="showMoreCandidates"
-          @add="startAdd"
-          @edit="startEdit"
-          @remove="removeQuestion"
-          @evidence="showEvidence"
-        />
+      <el-tabs :model-value="activeTab" class="verification-tabs" @tab-change="onTabChange">
+        <el-tab-pane label="核验基本信息" name="info">
+          <div class="tab-stack">
+            <MeetingInfoPanel :meeting="snapshot.meeting" :expanded="infoExpanded" @toggle="infoExpanded = !infoExpanded" />
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="切点问题" name="cut-point">
+          <div class="tab-stack">
+            <QuestionSelectionPanel
+              :cut-points="displayCutPoints"
+              :open-ended="[]"
+              :groups="['cut_point']"
+              :selected-ids="selectedIds"
+              :swap-loading-id="swapLoadingId"
+              :pool-exhausted="poolExhausted"
+              :show-more-available="showMoreAvailable"
+              :readonly="actionReadonly"
+              :saving="saving || candidateLoading"
+              @select="toggleSelect"
+              @swap="swapCandidate"
+              @show-more="showMoreCandidates"
+              @add="startAdd"
+              @edit="startEdit"
+              @remove="removeQuestion"
+              @evidence="showEvidence"
+            />
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="开放性问题" name="open-ended">
+          <div class="tab-stack">
+            <QuestionSelectionPanel
+              :cut-points="[]"
+              :open-ended="displayOpenEnded"
+              :groups="['open_ended']"
+              :selected-ids="selectedIds"
+              :swap-loading-id="swapLoadingId"
+              :pool-exhausted="poolExhausted"
+              :show-more-available="showMoreAvailable"
+              :readonly="actionReadonly"
+              :saving="saving || candidateLoading"
+              @select="toggleSelect"
+              @swap="swapCandidate"
+              @show-more="showMoreCandidates"
+              @add="startAdd"
+              @edit="startEdit"
+              @remove="removeQuestion"
+              @evidence="showEvidence"
+            />
+          </div>
+        </el-tab-pane>
+      </el-tabs>
 
+      <div class="analysis-stack">
         <el-card v-if="analysisTask && isAnalysisActive(analysisTask.status)" class="generation-card analysis-card" shadow="never">
           <div class="generation-heading">
             <div>
@@ -609,7 +661,10 @@ onBeforeRouteLeave(allowNavigation)
 
 <style scoped>
 .verification-page { max-width: 1050px; margin: 0 auto; }
-.detail-stack { display: grid; gap: 18px; }
+.generation-stack, .analysis-stack, .tab-stack { display: grid; gap: 18px; }
+.verification-tabs { margin-bottom: 18px; }
+.verification-tabs :deep(.el-tabs__header) { margin: 0 0 16px; }
+.verification-tabs :deep(.el-tabs__content) { overflow: visible; }
 .flow-hint { padding: 10px 14px; margin-bottom: 14px; border-radius: 8px; color: #52727c; background: #edf7f3; font-size: 13px; }
 .flow-hint span { padding: 0 8px; color: #168b82; font-weight: 700; }
 .page-header { align-items: flex-start; }

@@ -1,0 +1,255 @@
+{
+  "version": 1,
+  "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af",
+  "mode": "llm_generated",
+  "model": "deepseek-v4-flash",
+  "generated_at": "2026-08-05T10:39:13.980350+00:00",
+  "entries": [
+    {
+      "query": "这次在中部地区首次召开的心血管领域专家顾问会的主题是什么？",
+      "expected_chunk_id": "39088770-31a9-5cf0-9c83-331f80216883",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "担任本次会议主席的是哪位教授，她所在的医院和科室是什么？",
+      "expected_chunk_id": "39088770-31a9-5cf0-9c83-331f80216883",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "心血管肾脏代谢综合征（CKM）的具体分期和各期主要特征是什么？",
+      "expected_chunk_id": "8874c8a3-608d-583c-aa30-34d309a0e596",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "对于体质指数达到40 kg/m2以上的患者，指南推荐采用哪种治疗方式？",
+      "expected_chunk_id": "8874c8a3-608d-583c-aa30-34d309a0e596",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "PIONEER6研究在司美格鲁肽片剂的心血管安全性方面得出了什么结论？",
+      "expected_chunk_id": "9126c871-67da-52dc-8e93-b00c24509730",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "心肾代谢综合征（CKM）这一概念是在哪一年由哪个机构首次提出的？",
+      "expected_chunk_id": "9126c871-67da-52dc-8e93-b00c24509730",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽1.0mg在FLOW研究中显著降低了哪些事件的发生风险？",
+      "expected_chunk_id": "fdda3b34-6499-5aed-9fa7-15dfcdf24df9",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "CKM综合征这个概念将哪些疾病统一在了一起？",
+      "expected_chunk_id": "fdda3b34-6499-5aed-9fa7-15dfcdf24df9",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "[\"司美格鲁肽在治疗2型糖尿病和超重/肥胖时的推荐剂量分别是多少？\", \"为什么司美格鲁肽1.0mg对2型糖尿病患者的心血管和肾脏也有",
+      "expected_chunk_id": "de7640d7-b7b5-5126-8667-e340ff81d333",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "CKM概念是在哪一年提出的？",
+      "expected_chunk_id": "54d06181-6d03-546f-8237-4b7170fa210b",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "GLP-1RA具备哪些综合改善代谢及心肾保护作用？",
+      "expected_chunk_id": "54d06181-6d03-546f-8237-4b7170fa210b",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽在抑制和稳定动脉粥样硬化斑块方面是通过什么机制间接实现的？",
+      "expected_chunk_id": "75e90149-d979-5c47-ae7d-1858a21044ff",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "CKM概念的提出主要强调了什么理念？",
+      "expected_chunk_id": "75e90149-d979-5c47-ae7d-1858a21044ff",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽在肾脏保护方面的积极效果来自哪项研究？",
+      "expected_chunk_id": "82e0a404-7de3-540b-803c-f25fd112dc4d",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "GLP-1RA可能通过哪些机制来发挥肾脏保护作用？",
+      "expected_chunk_id": "82e0a404-7de3-540b-803c-f25fd112dc4d",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "FLOW研究亚组分析显示，SGLT2i联合GLP-1RA治疗有没有带来额外获益？",
+      "expected_chunk_id": "4e572c6a-8a1f-5124-a228-323042833dd1",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "GLP-1RA在肾脏和心血管方面具体有哪些显著获益？",
+      "expected_chunk_id": "4e572c6a-8a1f-5124-a228-323042833dd1",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽除了减重作用外，还有哪些获益需要在疗效评价中综合考虑？",
+      "expected_chunk_id": "699a6f3d-d80a-53d0-a086-9ce184969714",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "为什么王琦教授认为在心血管领域牵头进行多学科合作研究是必要的？",
+      "expected_chunk_id": "699a6f3d-d80a-53d0-a086-9ce184969714",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽除了降糖和减重，是否可能被定位为具有心肾保护作用的药物？",
+      "expected_chunk_id": "cacafc07-0293-5105-a232-75d9390c2cd7",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "GLP-1RA在中国超重或肥胖患者中的减重及代谢改善效果怎样？",
+      "expected_chunk_id": "cacafc07-0293-5105-a232-75d9390c2cd7",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽1mg剂量除了降糖，还对血脂、血压、尿蛋白及微循环有哪些潜在作用？",
+      "expected_chunk_id": "1865026b-9b3c-596e-a95d-c68f4409d5a1",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "为什么急性冠脉综合征患者低密度脂蛋白不高但炎症指标升高，这说明了什么？",
+      "expected_chunk_id": "1865026b-9b3c-596e-a95d-c68f4409d5a1",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽在冠脉微循环障碍方面的应用潜力是从哪个角度提出的？",
+      "expected_chunk_id": "69e8d1d9-4e58-5772-b102-ffe2a4f35bdc",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "FLOW研究结果对司美格鲁肽的临床应用和未来研究方向有什么意义？",
+      "expected_chunk_id": "69e8d1d9-4e58-5772-b102-ffe2a4f35bdc",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "SGLT2i和GLP-1RA在心血管保护中的作用部位有何不同？",
+      "expected_chunk_id": "78f736a5-792b-5722-83af-94b2d838308a",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "FLOW研究结果显示了司美格鲁肽在哪方面的潜力？",
+      "expected_chunk_id": "78f736a5-792b-5722-83af-94b2d838308a",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽在2型糖尿病合并慢性肾病患者中的心肾保护作用是由哪项研究证实的？",
+      "expected_chunk_id": "bdcad14b-0d67-5bf7-b6b2-b7fba6a99a1e",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "FLOW研究结果显示司美格鲁肽对哪类患者具有显著的心肾保护作用？",
+      "expected_chunk_id": "bdcad14b-0d67-5bf7-b6b2-b7fba6a99a1e",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "专家们建议未来应继续深入研究哪些药物及其作用机制？",
+      "expected_chunk_id": "385ab843-5a40-52e8-bce4-8e9f0e37bc8f",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "本次会议总结中提到的需要深化理解的主要综合征是什么？",
+      "expected_chunk_id": "385ab843-5a40-52e8-bce4-8e9f0e37bc8f",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "FLOW研究证实司美格鲁肽在合并慢性肾病的2型糖尿病患者中除了改善肾脏结局，还降低了哪些风险？",
+      "expected_chunk_id": "1b727106-14ec-564d-9395-6af291f04586",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽的最新医学证据在临床实践中主要适用于哪类患者人群？",
+      "expected_chunk_id": "1b727106-14ec-564d-9395-6af291f04586",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "FLOW研究证实了司美格鲁肽1.0mg注射液在肾脏结局和心血管风险方面有哪些具体获益？",
+      "expected_chunk_id": "13a19d5f-b786-506e-a15b-4d513b235845",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "CKM（心血管-肾脏-代谢综合征）这个概念是由哪个机构提出的？",
+      "expected_chunk_id": "13a19d5f-b786-506e-a15b-4d513b235845",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "哪些研究证实了司美格鲁肽1.0mg对T2D合并CKD患者预后有改善作用？",
+      "expected_chunk_id": "4691559d-7a1d-5dd9-bb93-ab4f6596eff2",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽2.4mg成为超重或肥胖合并心血管疾病患者推荐方案的依据来自哪些研究？",
+      "expected_chunk_id": "4691559d-7a1d-5dd9-bb93-ab4f6596eff2",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "心血管领域专家顾问会主要讨论了哪些学术主题？",
+      "expected_chunk_id": "29cb0b4e-1c12-5a22-a7db-43fa460e5466",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽在心血管指南或共识证据链中有什么价值？",
+      "expected_chunk_id": "29cb0b4e-1c12-5a22-a7db-43fa460e5466",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "司美格鲁肽在中国人群中的有效性和安全性数据是如何处理的？",
+      "expected_chunk_id": "909b7c14-4157-5e18-8dd0-84b8e3273c40",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    },
+    {
+      "query": "本次会议在会议内容和会议组织方面的评分分别是多少？",
+      "expected_chunk_id": "909b7c14-4157-5e18-8dd0-84b8e3273c40",
+      "expected_document_id": "686797ab-f274-49dd-8538-64a3d35491f1",
+      "kb_id": "8e017bee-09bd-4f34-b0ff-003897abf5af"
+    }
+  ]
+}

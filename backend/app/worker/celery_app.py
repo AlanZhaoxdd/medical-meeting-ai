@@ -32,5 +32,9 @@ celery_app.conf.update(
             "task": "app.worker.tasks.reconcile_ingestion_jobs",
             "schedule": 30.0,
         },
+        "reconcile-stale-exports": {
+            "task": "app.worker.tasks.reconcile_export_jobs",
+            "schedule": 60.0,
+        },
     },
 )

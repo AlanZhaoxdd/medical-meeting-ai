@@ -7,7 +7,12 @@ from pydantic import BaseModel, Field
 
 from app.schemas.kb import SchemaBase
 
-BenchmarkKind = Literal["retrieval_quality", "search_latency", "embedding_throughput"]
+BenchmarkKind = Literal[
+    "retrieval_quality",
+    "search_latency",
+    "embedding_throughput",
+    "ragas_quality",
+]
 
 
 class BenchmarkCreate(SchemaBase):

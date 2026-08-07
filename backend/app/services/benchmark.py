@@ -362,3 +362,30 @@ async def run_retrieval_quality_eval(
             for variant in ("dense_only", "sparse_only", "hybrid", "hybrid_rerank")
         },
     }
+
+
+async def run_ragas_quality_eval(
+    entries: list[dict],
+    *,
+    meeting_id: str,
+    scope: str = "MEETING_AND_KB",
+    metrics: list[str] | None = None,
+    max_items: int = 0,
+    seed: int = 42,
+    on_progress: ProgressCallback | None = None,
+) -> dict[str, Any]:
+    """End-to-end RAG quality evaluation driven by ragas (meeting Q&A flow)."""
+
+    # Imported lazily so the heavy ragas stack only loads when this benchmark
+    # actually runs; the rest of the app keeps a fast cold start.
+    from app.services.ragas_eval import run_ragas_eval as _run
+
+    return await _run(
+        entries=entries,
+        meeting_id=meeting_id,
+        scope=scope,
+        metrics=metrics,
+        max_items=max_items,
+        seed=seed,
+        on_progress=on_progress,
+    )

@@ -11,7 +11,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.schemas.question_generation import QualityReview, QuestionBatch, RetrievalPlan
 
-PROMPT_VERSION = "question-generation-v2"
+PROMPT_VERSION = "question-generation-v3"
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
@@ -164,9 +164,13 @@ class QuestionGenerationModelClient:
         return await self._invoke(
             QuestionBatch,
             "你是医药会议问题生成专家。只使用确认版会议纪要和给定知识库证据生成问题；"
-            "每题必须引用输入中真实存在的 chunk_id/document_id 和原文 quote，不输出答案；"
-            "切点问题和开放性问题每类最多生成 10 条。"
-            "切点问题要有明确事实边界；开放性问题必须适合专家讨论。证据不足时少生成或返回空数组。",
+            "每题必须引用输入中真实存在的 chunk_id/document_id 和原文 quote，不输出答案。"
+            "切点问题只围绕纪要中明确出现的事实锚点生成：明确写出的数值、剂量、日期、人群、"
+            "研究结论、专家立场或推荐意见等，且答案必须能从所引 quote 中直接读出；"
+            "若证据只有定性描述（如“显著降低”）而未给出具体数值，禁止询问具体百分比、降幅或变化量。"
+            "切点问题按独立事实锚点数量生成，通常 2-5 条、最多 8 条，禁止用同一句式批量套用不同指标凑数，"
+            "锚点不足时宁可少生成。开放性问题必须适合专家讨论，不得以“是否、有没有、多少、何时、哪个”提问，每类最多 10 条。"
+            "证据不足时少生成或返回空数组。",
             payload,
             temperature=0.2,
         )

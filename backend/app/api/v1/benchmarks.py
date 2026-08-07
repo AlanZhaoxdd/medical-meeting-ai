@@ -56,6 +56,17 @@ def _validate_params(kind: str, params: dict[str, Any]) -> None:
         raise AppException(
             422, "benchmark_params_invalid", "embedding_throughput 需要 params.texts"
         )
+    if kind == "ragas_quality":
+        if not params.get("meeting_id"):
+            raise AppException(
+                422, "benchmark_params_invalid", "ragas_quality 需要 params.meeting_id"
+            )
+        if not params.get("entries") and not params.get("dataset_file"):
+            raise AppException(
+                422,
+                "benchmark_params_invalid",
+                "ragas_quality 需要 params.dataset_file 或 params.entries",
+            )
 
 
 @router.get("/environment", response_model=EnvironmentRead)

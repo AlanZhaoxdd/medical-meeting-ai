@@ -1,5 +1,6 @@
 FROM node:22.17-alpine AS build
 WORKDIR /app
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .

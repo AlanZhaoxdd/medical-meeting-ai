@@ -22,7 +22,10 @@ import { normalizeAnalysisModules, normalizeAnalysisSources } from '@/utils/meet
 
 const analysisEndpoint = (meetingId: string) => `/api/v1/meetings/${meetingId}/analysis`
 const chatEndpoint = (meetingId: string) => `/api/v1/meetings/${meetingId}/ai-chat`
-const CHAT_TIMEOUT_MS = 60_000
+// CPU-only embedding/reranking can take more than one minute before the LLM
+// is called. Keep the client alive long enough for the grounded answer
+// pipeline to finish instead of aborting a valid request at 60 seconds.
+const CHAT_TIMEOUT_MS = 180_000
 
 function normalizeDocument(raw: unknown): AnalysisDocument | null {
   if (!raw || typeof raw !== 'object') return null
@@ -144,11 +147,22 @@ export async function reanalyzeMeeting(
   return { task_id: task.task_id, status: task.status }
 }
 
-function readChatResponse(data: unknown): MeetingChatResponse {
-  if (!data || typeof data !== 'object') {
+export function readChatResponse(data: unknown): MeetingChatResponse {
+  let payload = data
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload) as unknown
+    } catch {
+      throw new Error('问答接口返回的 JSON 无法解析。')
+    }
+  }
+  if (!payload || typeof payload !== 'object') {
     throw new Error('问答接口返回格式不正确。')
   }
-  const value = data as Record<string, unknown>
+  const rawPayload = payload as Record<string, unknown>
+  const nested = rawPayload.data ?? rawPayload.result ?? rawPayload.response
+  if (nested && typeof nested === 'object') payload = nested
+  const value = payload as Record<string, unknown>
   const rawSources = Array.isArray(value.sources)
     ? value.sources
     : Array.isArray(value.citations)
@@ -255,15 +269,16 @@ const sseChatTransport: MeetingChatTransport = {
 
 function chatMode(): MeetingChatMode {
   const value = import.meta.env.VITE_MEETING_CHAT_MODE
-  return isChatTransportMode(value) ? value : 'json'
+  return isChatTransportMode(value) ? value : 'sse'
 }
 
 /**
- * Pick the chat transport. Defaults to the real backend JSON endpoint; set
- * VITE_MEETING_CHAT_MODE=mock for the offline demo, or sse for streaming.
+ * Pick the chat transport. Defaults to the real backend SSE endpoint; set
+ * VITE_MEETING_CHAT_MODE=json for the compatibility path or mock for the
+ * offline demo.
  */
 export function createChatTransport(): MeetingChatTransport {
-  return chatMode() === 'sse' ? sseChatTransport : chatMode() === 'json' ? jsonChatTransport : mockChatTransport
+  return chatMode() === 'json' ? jsonChatTransport : chatMode() === 'mock' ? mockChatTransport : sseChatTransport
 }
 
 export type { ChatHandlers, MeetingChatRequest, MeetingChatResponse, MeetingChatTransport }

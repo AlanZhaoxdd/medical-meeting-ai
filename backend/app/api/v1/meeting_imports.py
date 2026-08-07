@@ -1704,7 +1704,7 @@ async def confirm_import(
         current_stage="queued",
         progress=0,
         model_name=get_settings().llm_model or "unconfigured",
-        prompt_version="question-generation-v2",
+        prompt_version="question-generation-v3",
     )
     session.add(ai_task)
     await session.flush()

@@ -52,3 +52,10 @@ class ObjectStorage:
     async def delete(self, object_key: str) -> None:
         await anyio.to_thread.run_sync(self.client.remove_object, self.bucket, object_key)
 
+    def presigned_url(self, object_key: str, *, expires_seconds: int = 3600) -> str:
+        return self.client.presigned_get_object(
+            self.bucket,
+            object_key,
+            expires=expires_seconds,
+        )
+

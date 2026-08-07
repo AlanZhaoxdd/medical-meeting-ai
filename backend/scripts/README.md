@@ -58,6 +58,26 @@ uv run python scripts/bench_embedding.py --kb <KB_ID> --batch 1,4,8,16
 也支持 `--golden` 或 `--corpus` 提供语料。批量对比不同 `BGE_BATCH_SIZE`
 或 CPU/GPU 的吞吐，直接量化入库优化效果。
 
+## 5. RAG 端到端质量（Ragas）
+
+```bash
+uv run python scripts/eval_ragas.py \
+  --meeting <MEETING_ID> \
+  --dataset eval_data/eval-datasets-1786019104793.json \
+  --max-items 50 --output report_ragas.json
+```
+
+- 对每条测试题走**生产问答链路**（会议纪要 + 知识库检索 → 重排 → LLM 生成），
+  再把 答案/检索上下文/标准答案 交给 ragas 评分；
+- 指标：`faithfulness`（忠实度）、`answer_relevancy`（答案相关性）、
+  `context_precision`（上下文精度，带参考）、`context_recall`（上下文召回）、
+  `semantic_similarity`（语义相似度）；
+- 评分 LLM 复用 `.env` 的 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL`，
+  embeddings 复用本地 BGE 模型服务；
+- 报告 JSON 含聚合指标 + 每条样本得分，便于定位低分问题（检索缺失/幻觉/答非所问）。
+
+也可以直接在"性能测试"页发起 `RAG 端到端质量（Ragas）` 评测，产出同样格式的报告。
+
 ## 简历口径建议
 
 - 每份报告 JSON 已带环境元数据（device / model / strategy），引用时注明数据集规模

@@ -1,0 +1,39 @@
+name: medical-meeting-ai
+
+services:
+  bge-models:
+    build:
+      context: ./model-service
+      args:
+        UV_DEFAULT_INDEX: ${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    environment:
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+      BGE_EMBEDDING_MODEL: ${BGE_EMBEDDING_MODEL:-BAAI/bge-m3}
+      BGE_RERANKER_MODEL: ${BGE_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      BGE_DEVICE: ${BGE_DEVICE:-cpu}
+      BGE_BATCH_SIZE: ${BGE_BATCH_SIZE:-8}
+      BGE_MAX_INPUT_CHARACTERS: ${BGE_MAX_INPUT_CHARACTERS:-32000}
+      BGE_RERANKER_QUERY_MAX_LENGTH: ${BGE_RERANKER_QUERY_MAX_LENGTH:-128}
+      BGE_RERANKER_MAX_LENGTH: ${BGE_RERANKER_MAX_LENGTH:-512}
+      OMP_NUM_THREADS: ${BGE_OMP_NUM_THREADS:-8}
+      MKL_NUM_THREADS: ${BGE_MKL_NUM_THREADS:-8}
+      OPENBLAS_NUM_THREADS: ${BGE_OPENBLAS_NUM_THREADS:-8}
+      TOKENIZERS_PARALLELISM: "false"
+    ports:
+      - "8100:8100"
+    volumes:
+      - huggingface_models:/models/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  api:
+    depends_on:
+      bge-models:
+        condition: service_healthy
+
+volumes:
+  huggingface_models:

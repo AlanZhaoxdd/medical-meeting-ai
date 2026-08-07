@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Check, Close, Plus } from '@element-plus/icons-vue'
+import { computed } from 'vue'
 import type { QuestionCandidate } from '@/types/meetingVerification'
 
 const props = defineProps<{
@@ -11,6 +12,7 @@ const props = defineProps<{
   showMoreAvailable: { cut_point: boolean; open_ended: boolean }
   readonly?: boolean
   saving?: boolean
+  groups?: Array<'cut_point' | 'open_ended'>
 }>()
 
 const emit = defineEmits<{
@@ -24,6 +26,20 @@ const emit = defineEmits<{
 }>()
 
 const isManual = (question: QuestionCandidate) => question.source !== 'ai' || question.rank == null
+const groupDefs = computed(() => [
+  {
+    key: 'cut_point' as const,
+    label: '切点问题',
+    description: '点击选中带入分析的关键决策点；不满意可点右上角“换掉”从候选池补位。',
+    questions: props.cutPoints,
+  },
+  {
+    key: 'open_ended' as const,
+    label: '开放性问题',
+    description: '点击选中带入分析的讨论性问题；换掉会从候选池取排名更低的候选。',
+    questions: props.openEnded,
+  },
+].filter((group) => !props.groups || props.groups.includes(group.key)))
 
 function toggle(question: QuestionCandidate) {
   if (props.readonly) return
@@ -34,10 +50,7 @@ function toggle(question: QuestionCandidate) {
 <template>
   <div class="question-selection-panels">
     <section
-      v-for="group in [
-      { key: 'cut_point' as const, label: '切点问题', description: '点击选中带入分析的关键决策点；不满意可点右上角“换掉”从候选池补位。', questions: cutPoints },
-      { key: 'open_ended' as const, label: '开放性问题', description: '点击选中带入分析的讨论性问题；换掉会从候选池取排名更低的候选。', questions: openEnded },
-    ]"
+      v-for="group in groupDefs"
       :key="group.key"
       class="selection-group"
     >

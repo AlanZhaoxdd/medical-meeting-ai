@@ -21,9 +21,15 @@ def upgrade() -> None:
     verification_status = postgresql.ENUM(
         "pending", "in_progress", "confirmed", name="verification_status"
     )
-    question_type = postgresql.ENUM("cut_point", "open_ended", name="meeting_question_type")
+    # 0003's Base.metadata.create_all() already creates these enum types from
+    # the current model metadata, so create them idempotently here and prevent
+    # op.create_table() from re-emitting CREATE TYPE.
+    question_type = postgresql.ENUM(
+        "cut_point", "open_ended", name="meeting_question_type", create_type=False
+    )
     bind = op.get_bind()
     verification_status.create(bind, checkfirst=True)
+    question_type.create(bind, checkfirst=True)
 
     op.add_column(
         "meetings",

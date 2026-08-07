@@ -147,7 +147,10 @@ services:
       retries: 30
 
   api:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        UV_DEFAULT_INDEX: ${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}
     environment: *backend-env
     depends_on:
       postgres:
@@ -167,16 +170,22 @@ services:
       retries: 20
 
   worker:
-    build: ./backend
-    command: ["uv", "run", "celery", "-A", "app.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${WORKER_CONCURRENCY:-1}"]
+    build:
+      context: ./backend
+      args:
+        UV_DEFAULT_INDEX: ${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    command: ["uv", "run", "--no-sync", "celery", "-A", "app.worker.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${WORKER_CONCURRENCY:-1}"]
     environment: *backend-env
     depends_on:
       api:
         condition: service_healthy
 
   beat:
-    build: ./backend
-    command: ["uv", "run", "celery", "-A", "app.worker.celery_app:celery_app", "beat", "--loglevel=INFO"]
+    build:
+      context: ./backend
+      args:
+        UV_DEFAULT_INDEX: ${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    command: ["uv", "run", "--no-sync", "celery", "-A", "app.worker.celery_app:celery_app", "beat", "--loglevel=INFO"]
     environment: *backend-env
     depends_on:
       api:
@@ -190,30 +199,9 @@ services:
     ports:
       - "5173:80"
 
-  bge-models:
-    profiles: ["models"]
-    build: ./model-service
-    environment:
-      BGE_EMBEDDING_MODEL: ${BGE_EMBEDDING_MODEL:-BAAI/bge-m3}
-      BGE_RERANKER_MODEL: ${BGE_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
-      BGE_DEVICE: ${BGE_DEVICE:-cpu}
-      BGE_BATCH_SIZE: ${BGE_BATCH_SIZE:-8}
-      BGE_MAX_INPUT_CHARACTERS: ${BGE_MAX_INPUT_CHARACTERS:-32000}
-      BGE_RERANKER_QUERY_MAX_LENGTH: ${BGE_RERANKER_QUERY_MAX_LENGTH:-128}
-      BGE_RERANKER_MAX_LENGTH: ${BGE_RERANKER_MAX_LENGTH:-512}
-      OMP_NUM_THREADS: ${BGE_OMP_NUM_THREADS:-8}
-      MKL_NUM_THREADS: ${BGE_MKL_NUM_THREADS:-8}
-      OPENBLAS_NUM_THREADS: ${BGE_OPENBLAS_NUM_THREADS:-8}
-      TOKENIZERS_PARALLELISM: "false"
-    ports:
-      - "8100:8100"
-    volumes:
-      - huggingface_models:/models/huggingface
-
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   etcd_data:
   milvus_data:
-  huggingface_models:

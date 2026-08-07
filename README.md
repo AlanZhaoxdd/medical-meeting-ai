@@ -22,10 +22,10 @@
 
    至少修改 `JWT_SECRET_KEY`、`MINIO_ROOT_PASSWORD`，并填写 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`。使用 DeepSeek 时也可直接提供 `DEEPSEEK_API_KEY`，程序会将其作为 `LLM_API_KEY` 的回退值。
 
-2. 启动基础设施、应用和真实 CPU 模型：
+2. 启动基础设施、应用和模型服务（默认 CPU 推理）：
 
    ```bash
-   docker compose --profile models up --build
+   docker compose -f docker-compose.yml -f docker-compose.models.yml up --build
    ```
 
 3. 打开：
@@ -34,20 +34,54 @@
    - OpenAPI：http://localhost:8000/docs
    - MinIO Console：http://localhost:9001
 
+## 会议成果导出
+
+AI 纪要分析页新增“成果导出”入口，支持文字版纪要（DOCX/PDF）、6～8 页可编辑
+PPTX（先预览/编辑大纲再生成）与基于证据的条形图/饼图（PNG/SVG，可插入 PPT）。
+
+- 导出任务统一异步执行（`PENDING → ANALYZING → GENERATING → RENDERING →
+  COMPLETED`），进度通过 `GET /exports/{export_id}` 轮询；失败可重试、运行中可取消。
+- 文字版与 PPT 均只使用已确认的 AI 纪要内容，不调用 LLM 重新生成纪要正文；
+  PPT 大纲与图表分类调用 LLM，但所有数值由后端按 `speakerId/sourceId` 聚合计算。
+- 文件保存在 MinIO（`exports/{meeting_id}/{export_id}.*`），PostgreSQL 只保存
+  任务元数据与配置快照；下载返回短期预签名 URL。
+- 生成工具：文字版使用 `python-docx`（DOCX）与 `reportlab`（PDF），PPT 使用
+  `python-pptx` 确定性渲染，图表使用 ECharts 预览、PIL 渲染 PPT 内嵌 PNG。
+
+开发环境更新依赖后执行一次 `uv sync`（会同步 `uv.lock` 中的 `reportlab`）。
+
 首次模型启动会下载权重并占用较多磁盘空间。模型尚未就绪时，上传原件仍会安全保存，任务会明确报告模型服务错误并按退避策略重试。
 
 ## GPU
 
-已安装 NVIDIA Container Toolkit 的 Linux 主机可运行：
+GPU 启动与 CPU 使用同一套结构：基础栈 `docker-compose.yml` 只编排业务服务，
+`docker-compose.models.yml` 是模型服务（CPU 默认），`docker-compose.gpu.yml`
+是 GPU 专用 overlay，负责切换 CUDA 版 torch、设置 `BGE_DEVICE=cuda` 并申请 1 张
+NVIDIA GPU。三个文件通过 Compose merge 合并，业务镜像/依赖关系完全一致。
+
+已安装 NVIDIA Container Toolkit 的主机运行：
 
 ```bash
-docker compose --profile models -f docker-compose.yml -f docker-compose.gpu.yml up --build
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.models.yml \
+  -f docker-compose.gpu.yml \
+  up --build
 ```
 
-这会将 `BGE_DEVICE` 设为 `cuda`、为模型服务申请一张 GPU，并用 CUDA 版 torch
-重新构建模型服务镜像（默认 CPU 锁定的 torch wheel 不支持 GPU）。Windows 用户可在
-Docker Desktop（WSL2 后端）+ NVIDIA 驱动下使用同一命令；先在 WSL 中执行
-`nvidia-smi` 确认驱动可见。CPU/GPU 的模型名、设备和 batch size 均可由环境变量覆盖。
+不带 `docker-compose.gpu.yml` 即为 CPU 推理（`docker-compose.models.yml` 中的
+`BGE_DEVICE` 默认 `cpu`）。`TORCH_INDEX_URL` 默认指向 cu126 镜像；宿主机驱动支持
+更新的 CUDA 运行时时可覆盖，例如：
+
+```bash
+TORCH_INDEX_URL=https://mirror.sjtu.edu.cn/pytorch-wheels/cu128 \
+docker compose -f docker-compose.yml -f docker-compose.models.yml \
+  -f docker-compose.gpu.yml up --build
+```
+
+Windows 用户可在 Docker Desktop（WSL2 后端）+ NVIDIA 驱动下使用同一命令；先在
+WSL 中执行 `nvidia-smi` 确认驱动可见。模型名、设备、batch size 均可由环境变量覆盖
+（`BGE_EMBEDDING_MODEL`、`BGE_DEVICE`、`BGE_BATCH_SIZE` 等）。
 
 ## 向量化策略
 

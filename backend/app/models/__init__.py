@@ -35,6 +35,14 @@ from app.models.meeting import (
     QuestionEvidence,
     VerificationStatus,
 )
+from app.models.export import (
+    ChartSpec,
+    ExportFileFormat,
+    ExportRecord,
+    ExportStatus,
+    ExportType,
+    PptOutline,
+)
 
 __all__ = [
     "AnalysisStatus",
@@ -70,4 +78,10 @@ __all__ = [
     "RetrievalLog",
     "ReviewEvent",
     "User",
+    "ChartSpec",
+    "ExportFileFormat",
+    "ExportRecord",
+    "ExportStatus",
+    "ExportType",
+    "PptOutline",
 ]

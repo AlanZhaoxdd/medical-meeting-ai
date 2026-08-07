@@ -19,12 +19,14 @@ from app.services.benchmark import (
     run_embedding_benchmark,
     run_retrieval_quality_eval,
     run_search_latency_benchmark,
+    run_ragas_quality_eval,
 )
 from app.services.model_client import ModelServiceClient
 from app.services.question_generation import claim_task
 from app.services.vector_store import VectorStore
 from app.worker.analysis_graph import AnalysisState, build_analysis_graph
 from app.worker.celery_app import celery_app
+from app.worker.export_tasks import _run_export
 from app.worker.graph import run_graph
 from app.worker.meeting_import import run_meeting_import  # noqa: F401,E402
 from app.worker.progress import publish_progress
@@ -124,6 +126,59 @@ async def _reconcile_queued_ingestion_jobs() -> dict[str, int]:
         await engine.dispose()
 
 
+async def _reconcile_stale_export_jobs() -> dict[str, int]:
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    from app.models.export import ExportRecord, ExportStatus
+
+    reset = requeued = 0
+    try:
+        async with factory() as session:
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=20)
+            stale = list(
+                (
+                    await session.scalars(
+                        select(ExportRecord)
+                        .where(
+                            ExportRecord.status.in_([ExportStatus.PENDING, ExportStatus.ANALYZING]),
+                            ExportRecord.updated_at <= cutoff,
+                        )
+                        .order_by(ExportRecord.updated_at)
+                        .limit(100)
+                    )
+                ).all()
+            )
+            for record in stale:
+                record.status = ExportStatus.PENDING
+                record.current_stage = "pending"
+                record.progress = 0
+                record.attempt_token = None
+                record.lease_expires_at = None
+                session.add(
+                    OutboxEvent(
+                        idempotency_key=f"export-reconcile:{record.id}:{record.updated_at.isoformat()}",
+                        event_type="export.requested",
+                        aggregate_id=str(record.meeting_id),
+                        payload={
+                            "export_id": str(record.id),
+                            "meeting_id": str(record.meeting_id),
+                        },
+                        status="PENDING",
+                    )
+                )
+                requeued += 1
+            await session.commit()
+        return {"reset": reset, "requeued": requeued}
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="app.worker.tasks.reconcile_export_jobs")  # type: ignore[untyped-decorator]
+def reconcile_export_jobs() -> dict[str, int]:
+    return asyncio.run(_reconcile_stale_export_jobs())
+
+
 @celery_app.task(name="app.worker.tasks.reconcile_ingestion_jobs")  # type: ignore[untyped-decorator]
 def reconcile_ingestion_jobs() -> dict[str, int]:
     return asyncio.run(_reconcile_queued_ingestion_jobs())
@@ -217,6 +272,11 @@ async def _sync_outbox_events() -> dict[str, int]:
                         celery_app.send_task(
                             "app.worker.tasks.run_analysis",
                             args=[event.payload["task_id"]],
+                        )
+                    elif event.event_type == "export.requested":
+                        celery_app.send_task(
+                            "app.worker.tasks.run_export",
+                            args=[event.payload["export_id"]],
                         )
                     event.status = "PROCESSED"
                     event.processed_at = datetime.now(timezone.utc)
@@ -421,6 +481,22 @@ async def _run_benchmark(run_id: str) -> dict[str, Any]:
                 rerank=params.get("rerank", True),
                 on_progress=on_progress,
             )
+        elif kind == "ragas_quality":
+            from app.services.ragas_eval import load_qa_entries
+
+            entries = load_qa_entries(
+                dataset_file=params.get("dataset_file"),
+                entries=params.get("entries"),
+            )
+            report = await run_ragas_quality_eval(
+                entries,
+                meeting_id=str(params["meeting_id"]),
+                scope=params.get("scope", "MEETING_AND_KB"),
+                metrics=params.get("metrics"),
+                max_items=params.get("max_items", 0),
+                seed=params.get("seed", 42),
+                on_progress=on_progress,
+            )
         else:
             raise AppException(422, "benchmark_kind_invalid", "未知评测类型")
         async with factory() as session:
@@ -571,6 +647,17 @@ async def _run_analysis(task_id: str) -> dict[str, Any]:
 def run_analysis(self: Task, task_id: str) -> dict[str, Any]:
     try:
         return asyncio.run(_run_analysis(task_id))
+    except Exception as exc:
+        retryable = not isinstance(exc, AppException) or exc.status_code >= 500
+        if retryable and self.request.retries < self.max_retries:
+            raise self.retry(exc=exc, countdown=min(300, 2 ** (self.request.retries + 1))) from exc
+        raise
+
+
+@celery_app.task(bind=True, max_retries=2, name="app.worker.tasks.run_export")  # type: ignore[untyped-decorator]
+def run_export(self: Task, export_id: str) -> dict[str, Any]:
+    try:
+        return asyncio.run(_run_export(export_id))
     except Exception as exc:
         retryable = not isinstance(exc, AppException) or exc.status_code >= 500
         if retryable and self.request.retries < self.max_retries:

@@ -250,3 +250,55 @@ async def test_chat_model_client_requires_llm_configuration(monkeypatch) -> None
         await client.answer({"question": "问题", "materials": {}})
     assert excinfo.value.status_code == 503
     assert excinfo.value.code == "chat_model_unavailable"
+
+
+async def test_chat_model_client_serializes_materials_without_nested_key(monkeypatch) -> None:
+    """Regression: _invoke must serialize the materials payload directly.
+
+    The chat flow calls ``client.answer(materials)`` where materials already
+    contains ``question`` / ``meeting_context`` / ``confirmed_minutes`` /
+    ``source_registry``; the previous ``payload['materials']`` lookup raised
+    KeyError and surfaced as chat_generation_failed.
+    """
+
+    class FakeResponse:
+        content = "答案 [1]"
+
+    captured: dict[str, object] = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured["kwargs"] = kwargs
+
+        async def ainvoke(self, prompt: str) -> FakeResponse:
+            captured["prompt"] = prompt
+            return FakeResponse()
+
+    settings = SimpleNamespace(
+        llm_base_url="https://api.deepseek.com/v1",
+        resolved_llm_api_key="sk-test",
+        llm_model="deepseek-test",
+    )
+    monkeypatch.setattr("app.services.meeting_chat.get_settings", lambda: settings)
+    monkeypatch.setattr("langchain_openai.ChatOpenAI", FakeChatOpenAI)
+
+    materials = {
+        "question": "本次会议有哪些结论？",
+        "meeting_context": {"title": "月度病例讨论会"},
+        "confirmed_minutes": "确认版纪要全文",
+        "source_registry": [
+            {
+                "index": 1,
+                "type": "transcript",
+                "title": "片段",
+                "content": "张医生建议先观察一周",
+            }
+        ],
+    }
+    client = MeetingChatModelClient()
+    answer = await client.answer(materials)
+    assert answer == "答案 [1]"
+    prompt = str(captured["prompt"])
+    assert "本次会议有哪些结论？" in prompt
+    assert "source_registry" in prompt
+    assert "张医生建议先观察一周" in prompt
