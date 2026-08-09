@@ -13,11 +13,15 @@ from app.schemas.analysis import (
 )
 from app.services.meeting_chat import (
     CHAT_PROMPT_VERSION,
+    CHAT_REWRITE_PROMPT_VERSION,
+    CHAT_REWRITE_SYSTEM_PROMPT,
     CHAT_SYSTEM_PROMPT,
     INSUFFICIENT_ANSWER,
     MeetingChatModelClient,
+    MeetingChatRewriter,
     build_chat_materials,
     build_chat_sources,
+    build_rewrite_prompt,
     generate_chat_answer,
 )
 
@@ -42,10 +46,35 @@ def test_chat_prompt_version_is_stable() -> None:
     assert CHAT_PROMPT_VERSION == "meeting-chat-v1"
 
 
+def test_rewrite_prompt_version_is_stable() -> None:
+    assert CHAT_REWRITE_PROMPT_VERSION == "chat-rewrite-v1"
+
+
 def test_chat_prompt_forbids_fabrication_and_requires_citations() -> None:
     assert "禁止调用外部知识或编造" in CHAT_SYSTEM_PROMPT
     assert "[n]" in CHAT_SYSTEM_PROMPT
     assert INSUFFICIENT_ANSWER in CHAT_SYSTEM_PROMPT
+
+
+def test_rewrite_prompt_contains_rules_and_rendered_history() -> None:
+    prompt = build_rewrite_prompt(
+        [{"question": "剂量是多少？", "answer": "一天两次。"}],
+        "那副作用呢？",
+    )
+    assert CHAT_REWRITE_SYSTEM_PROMPT in prompt
+    assert "剂量是多少？" in prompt
+    assert "一天两次。" in prompt
+    assert "当前问题：那副作用呢？" in prompt
+
+
+def test_rewrite_prompt_keeps_most_recent_turns_within_cap() -> None:
+    history = [
+        {"question": f"旧问题{i}", "answer": f"旧答案{i}"}
+        for i in range(20)
+    ]
+    prompt = build_rewrite_prompt(history, "当前问题", history_cap=100)
+    assert "旧问题0" not in prompt
+    assert "旧问题19" in prompt
 
 
 def test_chat_request_accepts_camel_case_from_frontend() -> None:
@@ -302,3 +331,58 @@ async def test_chat_model_client_serializes_materials_without_nested_key(monkeyp
     assert "本次会议有哪些结论？" in prompt
     assert "source_registry" in prompt
     assert "张医生建议先观察一周" in prompt
+
+
+async def test_rewriter_skips_when_no_history() -> None:
+    rewriter = MeetingChatRewriter(generator=AsyncMock())
+    result = await rewriter.rewrite(history=[], question="独立问题")
+    assert result == "独立问题"
+    rewriter.generator.assert_not_awaited()  # type: ignore[union-attr]
+
+
+async def test_rewriter_returns_rewritten_question() -> None:
+    async def generator(prompt: str) -> str:
+        assert "对话历史" in prompt
+        return "该药物的副作用有哪些？"
+
+    rewriter = MeetingChatRewriter(generator=generator)
+    result = await rewriter.rewrite(
+        history=[{"question": "剂量是多少？", "answer": "一天两次。"}],
+        question="那副作用呢？",
+    )
+    assert result == "该药物的副作用有哪些？"
+
+
+async def test_rewriter_falls_back_to_original_question() -> None:
+    history = [{"question": "剂量是多少？", "answer": "一天两次。"}]
+
+    async def broken(_prompt: str) -> str:
+        raise RuntimeError("boom")
+
+    rewriter = MeetingChatRewriter(generator=broken)
+    assert await rewriter.rewrite(history=history, question="那副作用呢？") == "那副作用呢？"
+
+    async def empty(_prompt: str) -> str:
+        return "   "
+
+    rewriter = MeetingChatRewriter(generator=empty)
+    assert await rewriter.rewrite(history=history, question="那副作用呢？") == "那副作用呢？"
+
+    async def same(_prompt: str) -> str:
+        return "那副作用呢？"
+
+    rewriter = MeetingChatRewriter(generator=same)
+    assert await rewriter.rewrite(history=history, question="那副作用呢？") == "那副作用呢？"
+
+
+async def test_rewriter_falls_back_on_overlong_result() -> None:
+    async def overlong(_prompt: str) -> str:
+        return "很长的改写问题" * 500
+
+    rewriter = MeetingChatRewriter(generator=overlong)
+    result = await rewriter.rewrite(
+        history=[{"question": "q", "answer": "a"}],
+        question="那呢？",
+        max_result_chars=100,
+    )
+    assert result == "那呢？"

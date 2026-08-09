@@ -41,6 +41,7 @@ async def meeting_chat(
                     meeting_id=meeting_id,
                     payload=payload,
                     organization_id=current.organization_id,
+                    created_by=current.user_id,
                 ):
                     yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
             except Exception as exc:
@@ -62,4 +63,5 @@ async def meeting_chat(
         meeting_id=meeting_id,
         payload=payload,
         organization_id=current.organization_id,
+        created_by=current.user_id,
     )

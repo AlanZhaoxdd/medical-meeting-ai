@@ -103,7 +103,7 @@ WSL 中执行 `nvidia-smi` 确认驱动可见。模型名、设备、batch size 
 
 详细状态机见 [docs/state-machine.md](docs/state-machine.md)，数据结构见 [docs/data-model.md](docs/data-model.md)，API 清单见 [docs/api.md](docs/api.md)。
 
-会议智能问答通过 `POST /api/v1/meetings/{meeting_id}/ai-chat` 提供：基于确认版会议纪要（可选叠加已发布知识库）做混合检索，由 LLM 生成带引用来源的答案；材料不足时返回 `INSUFFICIENT_CONTEXT` 而不编造。
+会议智能问答通过 `POST /api/v1/meetings/{meeting_id}/ai-chat` 提供：基于确认版会议纪要（可选叠加已发布知识库）做混合检索，由 LLM 生成带引用来源的答案；材料不足时返回 `INSUFFICIENT_CONTEXT` 而不编造。会话与每轮问答落库（`chat_conversations` / `chat_messages`）用于审计；带 `conversation_id` 的追问会先用最近几轮历史做指代改写（仅用于检索，答案仍以本轮证据为准），改写前后的问题都会留存。
 
 ## 测试与检查
 

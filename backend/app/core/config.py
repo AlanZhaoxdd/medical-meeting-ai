@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     langfuse_host: str = ""
     max_upload_bytes: int = 52_428_800
     meeting_import_stale_seconds: int = 3_600
+    # Maximum number of persisted chat messages loaded as follow-up history.
+    # Only completed user->assistant pairs are used for query rewriting.
+    chat_history_max_messages: int = 8
     # Maximum ranked candidates per question type kept in the selectable pool.
     meeting_question_candidate_limit: int = 10
     # Default page size when the frontend opens the candidate picker.

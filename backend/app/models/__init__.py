@@ -1,3 +1,12 @@
+from app.models.chat import ChatConversation, ChatMessage
+from app.models.export import (
+    ChartSpec,
+    ExportFileFormat,
+    ExportRecord,
+    ExportStatus,
+    ExportType,
+    PptOutline,
+)
 from app.models.kb import (
     AuditEvent,
     BatchReplaceOperation,
@@ -35,20 +44,14 @@ from app.models.meeting import (
     QuestionEvidence,
     VerificationStatus,
 )
-from app.models.export import (
-    ChartSpec,
-    ExportFileFormat,
-    ExportRecord,
-    ExportStatus,
-    ExportType,
-    PptOutline,
-)
 
 __all__ = [
     "AnalysisStatus",
     "AiTask",
     "AiTaskStatus",
     "AiTaskType",
+    "ChatConversation",
+    "ChatMessage",
     "VerificationStatus",
     "AuditEvent",
     "Chunk",
