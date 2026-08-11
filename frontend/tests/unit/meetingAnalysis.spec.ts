@@ -10,6 +10,7 @@ import {
   markdownToPlainText,
   normalizeAnalysisModules,
   normalizeAnalysisSources,
+  promoteSectionHeadings,
   recommendedQuestions,
   selectionTypeCounts,
   sourceSubtitle,
@@ -62,6 +63,15 @@ function contextFixture(overrides: Partial<MeetingAnalysisContext> = {}): Meetin
 }
 
 describe('meeting analysis formatting helpers', () => {
+  it('promotes numbered bold section headings to markdown headings', () => {
+    const converted = promoteSectionHeadings(
+      '**一、会议概述**\n本次会议围绕心肾代谢综合征展开讨论。\n\n**二、分歧与焦虑**\n部分专家持不同意见。\n\n**FLOW研究**证实司美格鲁肽获益 [1]。',
+    )
+    expect(converted).toContain('## 一、会议概述')
+    expect(converted).toContain('## 二、分歧与焦虑')
+    expect(converted).toContain('**FLOW研究**')
+  })
+
   it('reads JSON-string and data-wrapped chat responses', () => {
     const response = readChatResponse(
       JSON.stringify({

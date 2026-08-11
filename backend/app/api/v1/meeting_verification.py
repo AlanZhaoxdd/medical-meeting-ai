@@ -47,7 +47,7 @@ async def get_verification(
 ) -> MeetingVerificationRead:
     service = MeetingReviewService(session)
     meeting = await service.get_meeting(meeting_id)
-    await _ensure_meeting_access(session, meeting, current)
+    await _ensure_meeting_access(session, meeting, current, allow_deleted_kb=True)
     return await _snapshot(service, meeting)
 
 
@@ -333,9 +333,13 @@ async def _snapshot(
 
 
 async def _ensure_meeting_access(
-    session: AsyncSession, meeting: Meeting, current: AuthContext
+    session: AsyncSession,
+    meeting: Meeting,
+    current: AuthContext,
+    *,
+    allow_deleted_kb: bool = False,
 ) -> None:
     if meeting.organization_id != current.organization_id:
         raise ForbiddenError("会议不存在或无权访问")
-    if meeting.knowledge_base_id is not None:
+    if meeting.knowledge_base_id is not None and not allow_deleted_kb:
         await require_kb_access(session, current, meeting.knowledge_base_id)

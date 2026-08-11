@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { kbApi } from '@/api/kb'
 import { useAuthStore } from '@/stores/auth'
 import type { ExtractionTemplate, KnowledgeBase } from '@/types/kb'
+import { canAccessSettings } from '@/utils/kb'
 
 const props = defineProps<{ kb: KnowledgeBase }>()
 const emit = defineEmits<{ updated: [] }>()
@@ -11,7 +12,7 @@ const auth = useAuthStore()
 const templates = ref<ExtractionTemplate[]>([])
 const dialog = ref(false)
 const saving = ref(false)
-const canManage = computed(() => ['owner', 'admin'].includes(auth.user?.role || ''))
+const canManage = computed(() => canAccessSettings(auth.user?.role))
 const fields = [
   ['participants', '参会人'],
   ['topics', '议题'],

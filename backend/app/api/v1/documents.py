@@ -13,6 +13,7 @@ from app.core.auth import (
     AuthContext,
     CurrentUserDependency,
     require_kb_access,
+    require_exact_role,
     require_role,
 )
 from app.core.config import get_settings
@@ -44,7 +45,7 @@ from app.services.vector_store import VectorStore
 router = APIRouter(prefix="/knowledge-bases/{kb_id}/documents", tags=["文档"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
 EditorDependency = Annotated[AuthContext, Depends(require_role(Role.EDITOR))]
-AdminDependency = Annotated[AuthContext, Depends(require_role(Role.ADMIN))]
+AdminDependency = Annotated[AuthContext, Depends(require_exact_role(Role.ADMIN))]
 
 
 def serialize_document(document: Document) -> DocumentRead:
@@ -448,8 +449,8 @@ async def delete_document(
 ) -> Response:
     document = await _get_document(session, current, kb_id, document_id)
     if purge:
-        if current.role not in {Role.OWNER, Role.ADMIN}:
-            raise AppException(403, "permission_denied", "彻底清除仅限 owner/admin")
+        if current.role != Role.ADMIN:
+            raise AppException(403, "permission_denied", "彻底清除仅限 IT 管理员")
         await ObjectStorage().delete(document.minio_object_key)
         await VectorStore().delete_document(str(document.id))
         await session.delete(document)

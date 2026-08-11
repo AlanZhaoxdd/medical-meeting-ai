@@ -55,7 +55,7 @@ async function submit() {
       <div class="auth-card">
         <p class="eyebrow">{{ mode === 'login' ? 'SIGN IN' : 'GET STARTED' }}</p>
         <h2>{{ mode === 'login' ? '登录知识工作台' : '初始化您的组织' }}</h2>
-        <p class="muted">{{ mode === 'login' ? '继续管理会议知识资产' : '首个账号将成为组织 Owner' }}</p>
+          <p class="muted">{{ mode === 'login' ? '继续管理会议知识资产' : '首个账号将成为纪要编辑员' }}</p>
         <el-form label-position="top" @submit.prevent="submit">
           <el-form-item v-if="mode === 'register'" label="姓名">
             <el-input v-model="form.display_name" size="large" autocomplete="name" />

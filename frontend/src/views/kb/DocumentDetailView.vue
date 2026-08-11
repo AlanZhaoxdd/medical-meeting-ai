@@ -27,8 +27,6 @@ const documentStatusLabels: Record<string, string> = {
   CHUNKING: '切块中',
   EMBEDDING: '向量化中',
   EXTRACTING: '知识提取中',
-  AWAITING_REVIEW: '待审核',
-  IN_REVIEW: '审核中',
   PUBLISHED: '已发布',
   FAILED: '处理失败',
   DELETED: '已删除',

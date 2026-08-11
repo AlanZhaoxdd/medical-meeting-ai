@@ -58,7 +58,19 @@ uv run python scripts/bench_embedding.py --kb <KB_ID> --batch 1,4,8,16
 也支持 `--golden` 或 `--corpus` 提供语料。批量对比不同 `BGE_BATCH_SIZE`
 或 CPU/GPU 的吞吐，直接量化入库优化效果。
 
-## 5. RAG 端到端质量（Ragas）
+## 5. PPT / 图表渲染延迟（p50/p95/p99）
+
+```bash
+uv run python scripts/bench_chart_ppt.py --iterations 30 --warmup 3
+```
+
+测的是导出链路中不依赖外部服务的确定性渲染阶段：条形图 PNG、饼图 PNG、
+8 页 PPTX 打包、以及“2 张图表 + PPTX”的完整渲染路径，输出各阶段
+p50/p95/p99、均值与 ops/sec（默认写 `report_chart_ppt.json`）。
+LLM 大纲生成与检索不在本脚本范围，需配合
+`bench_search_latency.py` / `eval_ragas.py` 一起看全链路。
+
+## 6. RAG 端到端质量（Ragas）
 
 ```bash
 uv run python scripts/eval_ragas.py \

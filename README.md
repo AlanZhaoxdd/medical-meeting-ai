@@ -22,7 +22,8 @@
 
    至少修改 `JWT_SECRET_KEY`、`MINIO_ROOT_PASSWORD`，并填写 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`。使用 DeepSeek 时也可直接提供 `DEEPSEEK_API_KEY`，程序会将其作为 `LLM_API_KEY` 的回退值。
 
-2. 启动基础设施、应用和模型服务（默认 CPU 推理）：
+2. 启动基础设施、应用和模型服务（默认 GPU 推理；无 GPU 的主机见下方
+   “GPU”一节的 CPU 回退说明）：
 
    ```bash
    docker compose -f docker-compose.yml -f docker-compose.models.yml up --build
@@ -54,12 +55,13 @@ PPTX（先预览/编辑大纲再生成）与基于证据的条形图/饼图（PN
 
 ## GPU
 
-GPU 启动与 CPU 使用同一套结构：基础栈 `docker-compose.yml` 只编排业务服务，
-`docker-compose.models.yml` 是模型服务（CPU 默认），`docker-compose.gpu.yml`
-是 GPU 专用 overlay，负责切换 CUDA 版 torch、设置 `BGE_DEVICE=cuda` 并申请 1 张
-NVIDIA GPU。三个文件通过 Compose merge 合并，业务镜像/依赖关系完全一致。
+模型服务默认按 GPU 构建/运行：`docker-compose.models.yml` 默认使用 CUDA 版
+torch（`TORCH_INDEX_URL` 默认 cu126）并设置 `BGE_DEVICE=cuda`，因此上述两条
+文件的基础启动命令即为 GPU 推理，无需额外参数。`docker-compose.gpu.yml` 是可选
+overlay，负责显式申请 1 张 NVIDIA GPU（`deploy.resources`），适合需要保证独占
+GPU 的环境；业务镜像/依赖关系与 CPU 完全一致。
 
-已安装 NVIDIA Container Toolkit 的主机运行：
+已安装 NVIDIA Container Toolkit 的主机也可以显式叠加 GPU overlay：
 
 ```bash
 docker compose \
@@ -69,18 +71,17 @@ docker compose \
   up --build
 ```
 
-不带 `docker-compose.gpu.yml` 即为 CPU 推理（`docker-compose.models.yml` 中的
-`BGE_DEVICE` 默认 `cpu`）。`TORCH_INDEX_URL` 默认指向 cu126 镜像；宿主机驱动支持
-更新的 CUDA 运行时时可覆盖，例如：
+无 GPU 的主机回退 CPU：构建时传空 `TORCH_INDEX_URL` 以使用 `uv.lock` 中的 CPU
+torch，运行设置 `BGE_DEVICE=cpu`：
 
 ```bash
-TORCH_INDEX_URL=https://mirror.sjtu.edu.cn/pytorch-wheels/cu128 \
-docker compose -f docker-compose.yml -f docker-compose.models.yml \
-  -f docker-compose.gpu.yml up --build
+TORCH_INDEX_URL= BGE_DEVICE=cpu \
+docker compose -f docker-compose.yml -f docker-compose.models.yml up --build
 ```
 
-Windows 用户可在 Docker Desktop（WSL2 后端）+ NVIDIA 驱动下使用同一命令；先在
-WSL 中执行 `nvidia-smi` 确认驱动可见。模型名、设备、batch size 均可由环境变量覆盖
+宿主机驱动支持更新的 CUDA 运行时时可覆盖 `TORCH_INDEX_URL`，例如 cu128。Windows
+用户可在 Docker Desktop（WSL2 后端）+ NVIDIA 驱动下使用同一命令；先在 WSL 中执行
+`nvidia-smi` 确认驱动可见。模型名、设备、batch size 均可由环境变量覆盖
 （`BGE_EMBEDDING_MODEL`、`BGE_DEVICE`、`BGE_BATCH_SIZE` 等）。
 
 ## 向量化策略
@@ -103,7 +104,7 @@ WSL 中执行 `nvidia-smi` 确认驱动可见。模型名、设备、batch size 
 
 详细状态机见 [docs/state-machine.md](docs/state-machine.md)，数据结构见 [docs/data-model.md](docs/data-model.md)，API 清单见 [docs/api.md](docs/api.md)。
 
-会议智能问答通过 `POST /api/v1/meetings/{meeting_id}/ai-chat` 提供：基于确认版会议纪要（可选叠加已发布知识库）做混合检索，由 LLM 生成带引用来源的答案；材料不足时返回 `INSUFFICIENT_CONTEXT` 而不编造。会话与每轮问答落库（`chat_conversations` / `chat_messages`）用于审计；带 `conversation_id` 的追问会先用最近几轮历史做指代改写（仅用于检索，答案仍以本轮证据为准），改写前后的问题都会留存。
+会议智能问答通过 `POST /api/v1/meetings/{meeting_id}/ai-chat` 提供，是一个**轻量 Agent**：LLM 先判断问题类型并路由（默认走确认版会议纪要 + 已发布知识库的混合检索，与会议/知识库无关的通用问题直接交给 LLM 回答，隐私/违法/代替诊疗等请求明确拒绝），然后由对应"工具"执行并流式返回。Grounded 路径由 LLM 生成带引用来源的答案，材料不足时返回 `INSUFFICIENT_CONTEXT` 而不编造；通用回答会标注"未引用会议或知识库内容"。会话与每轮问答落库（`chat_conversations` / `chat_messages`）用于审计，路由结果（`MEETING_GROUNDED` / `GENERAL_LLM` / `REFUSED`）随消息一起保存；带 `conversation_id` 的追问会先用最近几轮历史做指代改写（仅用于检索，答案仍以本轮证据为准），改写前后的问题都会留存。可用 `CHAT_AGENT_ENABLED=false` 退回纯 RAG 行为。
 
 ## 测试与检查
 
@@ -133,9 +134,12 @@ Compose 使用 `postgres_data`、`minio_data`、`milvus_data`、`redis_data`、`
 
 普通删除是软删除。owner/admin 可通过 `purge=true` 彻底清除，并同步移除 MinIO 与 Milvus 数据；此操作不可恢复，应在备份后执行。
 
-## 本迭代明确不含
+## 当前明确不含
 
-实时 ASR/音频流、PPT/图表/结构化纪要生成、GraphRAG、任意自定义 Schema/Prompt 编辑器、组织公共 KB 和跨 KB 检索。
+实时 ASR/音频流、GraphRAG、任意自定义 Schema/Prompt 编辑器、组织公共 KB、跨 KB 检索和多场会议图表合并分析。
+
+会议图表当前支持组织级 11 项切点模板、互斥数值区间、独立参会者人数/有效证据次数统计，
+并可生成柱状图或饼图。AI 只负责抽取带原文来源的数值，区间分桶、计数和百分比均由后端确定性完成。
 
 ## 官方接口参考
 

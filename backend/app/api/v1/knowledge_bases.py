@@ -12,7 +12,7 @@ from app.core.auth import (
     AuthContext,
     CurrentUserDependency,
     require_kb_access,
-    require_role,
+    require_exact_role,
 )
 from app.core.exceptions import ConflictError, NotFoundError
 from app.db.session import get_session
@@ -37,7 +37,7 @@ from app.services.vector_store import VectorStore
 
 router = APIRouter(prefix="/knowledge-bases", tags=["知识库"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
-AdminDependency = Annotated[AuthContext, Depends(require_role(Role.ADMIN))]
+AdminDependency = Annotated[AuthContext, Depends(require_exact_role(Role.ADMIN))]
 
 DEFAULT_FIELDS = [
     "participants",

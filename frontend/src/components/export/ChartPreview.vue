@@ -18,23 +18,51 @@ const emit = defineEmits<{
 const chartEl = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 
+function wrapTitle(text: string, maxChars = 20): string {
+  const cleaned = String(text ?? '').replace(/\n/g, '')
+  if (cleaned.length <= maxChars) return cleaned
+  const lines: string[] = []
+  for (let index = 0; index < cleaned.length; index += maxChars) {
+    lines.push(cleaned.slice(index, index + maxChars))
+  }
+  return lines.join('\n')
+}
+
 const option = computed<EChartsOption>(() => {
   const categories = props.spec.categories
+  const isPie = props.spec.type === 'pie'
+  const wrappedTitle = wrapTitle(props.spec.title, isPie ? 20 : 28)
+  const titleLines = wrappedTitle.split('\n').length
+  // Reserve space for the title and an optional subtitle so the chart body never
+  // overlaps them, no matter how many lines the title wraps to.
+  const titleBlockHeight = (isPie ? 8 : 14) + titleLines * 22 + (props.spec.subtitle ? 24 : 0)
+  const pieCenterY = `${Math.min(0.68, Math.max(0.46, (titleBlockHeight + 28 + 104) / 380)) * 100}%`
+  const metricLabel = props.spec.data_origin === 'demo'
+    ? '人数'
+    : props.spec.count_mode === 'evidence_count' ? '有效证据次数' : '人数'
   const base: EChartsOption = {
     textStyle: { fontFamily: 'Microsoft YaHei, PingFang SC, sans-serif', color: '#314e62' },
     title: {
-      text: props.spec.title,
+      text: wrappedTitle,
       subtext: props.spec.subtitle,
       left: 'center',
-      textStyle: { color: '#123c53', fontSize: 16, fontWeight: 700 },
-      subtextStyle: { color: '#6f8390', fontSize: 11 },
+      top: isPie ? 8 : 14,
+      width: isPie ? '92%' : undefined,
+      textStyle: {
+        color: '#123c53',
+        fontSize: isPie ? 14 : 16,
+        fontWeight: 700,
+        lineHeight: 22,
+      },
+      subtextStyle: { color: '#6f8390', fontSize: 11, lineHeight: 16 },
     },
-    tooltip: { trigger: 'item' },
-    grid: { left: 50, right: 30, top: 90, bottom: 70 },
+    tooltip: { trigger: 'item', confine: true },
+    grid: { left: 50, right: 30, top: Math.max(90, titleBlockHeight + 32), bottom: 70 },
   }
   if (props.spec.type === 'bar') {
     base.tooltip = {
       trigger: 'axis',
+      confine: true,
       formatter: (params: unknown) => {
         const list = Array.isArray(params) ? params : []
         const index = Number(list[0]?.dataIndex ?? 0)
@@ -42,12 +70,8 @@ const option = computed<EChartsOption>(() => {
         if (!category) return ''
         const lines = [
           `<b>${category.label}</b>`,
-          `${props.spec.metric === 'evidence_count' ? '有效证据片段数' : '独立参会者覆盖数'}：${category.value}`,
+          `${metricLabel}：${category.value}`,
         ]
-        for (const item of category.evidence.slice(0, 4)) {
-          const speaker = item.speakerName ? `${item.speakerName}：` : ''
-          lines.push(`<div style="margin-top:4px">${speaker}${item.snippet.slice(0, 60)}</div>`)
-        }
         return lines.join('<br/>')
       },
     }
@@ -58,8 +82,7 @@ const option = computed<EChartsOption>(() => {
     }
     base.yAxis = {
       type: 'value',
-      name: props.spec.metric === 'evidence_count' ? '证据片段数' : '独立参会者人数',
-      minInterval: 1,
+      name: metricLabel,
     }
     base.series = [
       {
@@ -75,17 +98,15 @@ const option = computed<EChartsOption>(() => {
   } else {
     base.tooltip = {
       trigger: 'item',
+      confine: true,
       formatter: (params: unknown) => {
         const item = (params as { dataIndex?: number }) ?? {}
         const category = categories[Number(item.dataIndex ?? 0)]
         if (!category) return ''
         const lines = [
           `<b>${category.label}</b>`,
-          `${category.value} 人 · ${category.percentage ?? 0}%`,
+          `${category.value}人 · ${category.percentage ?? 0}%${props.spec.denominator?.value ? `（样本 ${props.spec.denominator.value} 人）` : ''}`,
         ]
-        for (const evidence of category.evidence.slice(0, 3)) {
-          lines.push(`<div style="margin-top:4px">${evidence.speakerName ?? ''}：${evidence.snippet.slice(0, 60)}</div>`)
-        }
         return lines.join('<br/>')
       },
     }
@@ -93,8 +114,8 @@ const option = computed<EChartsOption>(() => {
     base.series = [
       {
         type: 'pie',
-        radius: ['38%', '62%'],
-        center: ['50%', '46%'],
+        radius: ['34%', '55%'],
+        center: ['50%', pieCenterY],
         data: categories.map((category) => ({
           name: category.label,
           value: category.value,
@@ -120,7 +141,7 @@ function render() {
   chart.on('click', (params: unknown) => {
     const index = Number((params as { dataIndex?: number })?.dataIndex ?? -1)
     const category = props.spec.categories[index]
-    if (category) emit('categoryClick', category)
+    if (category && props.spec.data_origin !== 'demo') emit('categoryClick', category)
   })
 }
 
@@ -168,6 +189,6 @@ defineExpose({
 </template>
 
 <style scoped>
-.chart-preview { width: 100%; height: 380px; }
+.chart-preview { position: relative; z-index: 1; width: 100%; height: 380px; }
 .chart-preview--download { position: absolute; left: -9999px; top: 0; width: 960px; height: 640px; }
 </style>

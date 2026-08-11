@@ -22,8 +22,10 @@ SessionDependency = Annotated[AsyncSession, Depends(get_session)]
     response_model=MeetingChatResponse,
     summary="会议智能问答",
     description=(
-        "基于确认版会议纪要（以及可选的已发布知识库）检索相关内容，"
-        "由 LLM 生成带引用来源的答案；材料不足时返回 INSUFFICIENT_CONTEXT。"
+        "轻量 Agent 问答：LLM 先判断问题类型并路由——会议/知识库相关问题走"
+        "混合检索并生成带引用来源的答案（材料不足返回 INSUFFICIENT_CONTEXT），"
+        "与会议/知识库无关的通用问题直接由 LLM 回答，"
+        "隐私、违法或代替诊疗等请求明确拒绝。"
     ),
 )
 async def meeting_chat(
@@ -47,7 +49,12 @@ async def meeting_chat(
             except Exception as exc:
                 code = getattr(exc, "code", "chat_generation_failed")
                 message = getattr(exc, "message", "问答生成失败，请稍后重试")
-                yield f"data: {json.dumps({'type': 'error', 'code': code, 'message': message}, ensure_ascii=False)}\n\n"
+                error_payload = {
+                    "type": "error",
+                    "code": code,
+                    "message": message,
+                }
+                yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(
             events(),

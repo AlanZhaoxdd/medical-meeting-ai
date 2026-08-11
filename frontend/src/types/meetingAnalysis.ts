@@ -88,6 +88,7 @@ export interface MeetingAnalysisContext {
 
 export type ChatScope = 'CURRENT_MEETING' | 'MEETING_AND_KB'
 export type ChatStatus = 'COMPLETED' | 'INSUFFICIENT_CONTEXT' | 'FAILED'
+export type ChatRoute = 'MEETING_GROUNDED' | 'GENERAL_LLM' | 'REFUSED'
 
 export interface MeetingChatRequest {
   meetingId: string
@@ -103,14 +104,18 @@ export interface MeetingChatResponse {
   status: ChatStatus
   sources: RagSource[]
   suggestedQuestions?: string[]
+  /** Agent route that answered this turn; absent on older backends. */
+  route?: ChatRoute
 }
 
 export type RagStage =
   | 'IDLE'
+  | 'ROUTING'
   | 'RETRIEVING_MEETING'
   | 'RETRIEVING_KB'
   | 'ORGANIZING'
   | 'STREAMING'
+  | 'GENERAL_LLM'
   | 'DONE'
 
 export type ChatMessageRole = 'user' | 'assistant'
@@ -129,6 +134,7 @@ export interface ChatMessage {
   content: string
   status: ChatMessageStatus
   stage?: RagStage
+  route?: ChatRoute
   conversationId?: string
   messageId?: string
   sources: RagSource[]

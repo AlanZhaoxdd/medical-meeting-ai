@@ -780,7 +780,7 @@ async def update_task_progress(
 
 async def mark_task_failed(session: AsyncSession, task: AiTask, exc: Exception) -> None:
     task.status = AiTaskStatus.FAILED
-    task.error_code = getattr(exc, "code", "question_generation_failed")
+    task.error_code = str(getattr(exc, "code", "question_generation_failed"))
     task.error_message = str(exc)[:2000]
     task.completed_at = datetime.now(timezone.utc)
     await session.commit()

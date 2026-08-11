@@ -12,6 +12,7 @@ from app.schemas.analysis import MeetingChatRequest
 from app.services.meeting_chat import (
     MeetingChatModelClient,
     MeetingChatRewriter,
+    MeetingChatRouter,
     answer_meeting_question,
     get_or_create_chat_conversation,
     load_chat_history,
@@ -220,8 +221,12 @@ async def test_answer_meeting_question_persists_and_rewrites_follow_up(
             assert "那副作用呢" in prompt
             return "该药物的副作用有哪些？"
 
+        async def router_generator(_prompt):
+            return "MEETING_GROUNDED"
+
         model_client = MeetingChatModelClient(generator=model_generator)
         rewriter = MeetingChatRewriter(generator=rewrite_generator)
+        router = MeetingChatRouter(generator=router_generator)
 
         first = await answer_meeting_question(
             session,
@@ -233,10 +238,12 @@ async def test_answer_meeting_question_persists_and_rewrites_follow_up(
             organization_id=org_id,
             model_client=model_client,
             rewriter=rewriter,
+            router=router,
             retriever=retriever,
             reranker=reranker,
         )
         assert first.status == "COMPLETED"
+        assert first.route == "MEETING_GROUNDED"
         assert retrieved == ["该药物剂量是多少？"]
 
         second = await answer_meeting_question(
@@ -250,10 +257,12 @@ async def test_answer_meeting_question_persists_and_rewrites_follow_up(
             organization_id=org_id,
             model_client=model_client,
             rewriter=rewriter,
+            router=router,
             retriever=retriever,
             reranker=reranker,
         )
         assert second.status == "COMPLETED"
+        assert second.route == "MEETING_GROUNDED"
         assert retrieved[-1] == "该药物的副作用有哪些？"
         assert second.conversation_id == first.conversation_id
 
@@ -269,8 +278,10 @@ async def test_answer_meeting_question_persists_and_rewrites_follow_up(
         assert len(rows) == 4
         assert rows[0].role == "user"
         assert rows[0].rewritten_question is None
+        assert rows[0].route == "MEETING_GROUNDED"
         assert rows[1].role == "assistant"
         assert rows[1].status == "COMPLETED"
+        assert rows[1].route == "MEETING_GROUNDED"
         assert rows[2].question == "那副作用呢？"
         assert rows[2].rewritten_question == "该药物的副作用有哪些？"
         assert rows[3].status == "COMPLETED"
@@ -302,7 +313,11 @@ async def test_answer_meeting_question_persists_failed_turn(
         async def broken_generator(payload):
             raise RuntimeError("boom")
 
+        async def router_generator(_prompt):
+            return "MEETING_GROUNDED"
+
         client = MeetingChatModelClient(generator=broken_generator)
+        router = MeetingChatRouter(generator=router_generator)
         with pytest.raises(Exception) as excinfo:
             await answer_meeting_question(
                 session,
@@ -313,6 +328,7 @@ async def test_answer_meeting_question_persists_failed_turn(
                 ),
                 organization_id=org_id,
                 model_client=client,
+                router=router,
                 retriever=retriever,
                 reranker=reranker,
             )
@@ -336,6 +352,8 @@ async def test_answer_meeting_question_persists_failed_turn(
         )
         assert len(rows) == 2
         assert rows[0].role == "user"
+        assert rows[0].route == "MEETING_GROUNDED"
         assert rows[1].role == "assistant"
         assert rows[1].status == "FAILED"
+        assert rows[1].route == "MEETING_GROUNDED"
         assert rows[1].error_code == "chat_generation_failed"

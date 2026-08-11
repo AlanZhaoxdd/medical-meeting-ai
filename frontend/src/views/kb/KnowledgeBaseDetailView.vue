@@ -6,17 +6,20 @@ import { ArrowLeft } from '@element-plus/icons-vue'
 import { kbApi } from '@/api/kb'
 import type { KnowledgeBase } from '@/types/kb'
 import DocumentsTab from '@/views/kb/tabs/DocumentsTab.vue'
-import KnowledgeReviewTab from '@/views/kb/tabs/KnowledgeReviewTab.vue'
 import SearchWorkbenchTab from '@/views/kb/tabs/SearchWorkbenchTab.vue'
 import TemplatesTab from '@/views/kb/tabs/TemplatesTab.vue'
 import KbSettingsTab from '@/views/kb/tabs/KbSettingsTab.vue'
+import { useAuthStore } from '@/stores/auth'
+import { canAccessSettings } from '@/utils/kb'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const kbId = String(route.params.id)
 const kb = ref<KnowledgeBase>()
 const loading = ref(true)
-const activeTab = ref(String(route.query.tab || 'documents'))
+const requestedTab = String(route.query.tab || 'documents')
+const activeTab = ref(requestedTab === 'review' || (requestedTab === 'settings' && !canAccessSettings(auth.user?.role)) ? 'documents' : requestedTab)
 
 async function load() {
   loading.value = true
@@ -50,10 +53,9 @@ onMounted(load)
     </header>
     <el-tabs v-if="kb" v-model="activeTab" class="kb-tabs" @tab-change="changeTab">
       <el-tab-pane label="文档" name="documents"><DocumentsTab :kb="kb" /></el-tab-pane>
-      <el-tab-pane label="知识审核" name="review"><KnowledgeReviewTab :kb="kb" /></el-tab-pane>
       <el-tab-pane label="检索测试" name="search"><SearchWorkbenchTab :kb="kb" /></el-tab-pane>
       <el-tab-pane label="字段模板" name="templates"><TemplatesTab :kb="kb" @updated="load" /></el-tab-pane>
-      <el-tab-pane label="设置" name="settings"><KbSettingsTab :kb="kb" @updated="load" /></el-tab-pane>
+      <el-tab-pane v-if="canAccessSettings(auth.user?.role)" label="设置" name="settings"><KbSettingsTab :kb="kb" @updated="load" /></el-tab-pane>
     </el-tabs>
   </section>
 </template>

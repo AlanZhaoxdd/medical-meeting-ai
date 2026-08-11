@@ -35,6 +35,15 @@ describe('meeting export normalizers', () => {
       title: '各切点问题参会者覆盖度',
       subtitle: '统计口径：独立参会者',
       metric: 'independent_speakers',
+      data_origin: 'demo',
+      count_mode: 'unique_speakers',
+      bin_definition: [
+        { key: 'lt_5', label: '<5%', upper: 5, upper_inclusive: false },
+        { key: 'gte_5', label: '≥5%', lower: 5, lower_inclusive: true },
+      ],
+      valid_observation_count: 2,
+      excluded_observation_count: 1,
+      excluded_reasons: [{ reason: '数值不在任何配置区间内', rawValue: '未知' }],
       denominator: { name: '有效参会者', value: 5 },
       categories: [
         {
@@ -52,6 +61,10 @@ describe('meeting export normalizers', () => {
     expect(spec?.categories[0].value).toBe(2)
     expect(spec?.categories[0].evidence[0].speakerName).toBe('张三')
     expect(spec?.validation.valid).toBe(true)
+    expect(spec?.count_mode).toBe('unique_speakers')
+    expect(spec?.bin_definition).toHaveLength(2)
+    expect(spec?.excluded_observation_count).toBe(1)
+    expect(spec?.data_origin).toBe('demo')
   })
 
   it('rejects malformed records', () => {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from operator import add
@@ -85,14 +86,22 @@ def validate_plan_grounding(plan: RetrievalPlan, meeting_context: dict[str, Any]
         str(meeting_context.get(key) or "")
         for key in ("title", "topic", "description", "confirmed_minutes")
     ).lower()
+    # Whitespace-preserving copy so multi-word entities such as "ONWARDS 1"
+    # can match "ONWARDS 1、3、5" inside the minutes.
+    normalized_grounding = re.sub(r"\s+", " ", grounding)
+
     def is_grounded(entity: str) -> bool:
         candidate = re.sub(r"\s+", "", entity).lower()
         if not candidate:
             return True
         if candidate in grounding:
             return True
+        # Entity with original spacing collapsed to single spaces, e.g.
+        # "ONWARDS 1" -> "onwards 1" matches "onwards 1、3、5" in minutes.
+        if re.sub(r"\s+", " ", entity.strip()).lower() in normalized_grounding:
+            return True
         # Chinese model outputs often add a descriptive suffix (for example
-        # “临床应用” or “管理指南”) to a real entity. Accept a meaningful
+        # "临床应用" or "管理指南") to a real entity. Accept a meaningful
         # contiguous anchor while still rejecting wholly unrelated entities.
         for token in re.findall(r"[a-z0-9][a-z0-9./+%-]{1,}|[\u4e00-\u9fff]{2,}", candidate):
             if token in grounding:
@@ -100,6 +109,15 @@ def validate_plan_grounding(plan: RetrievalPlan, meeting_context: dict[str, Any]
             if re.fullmatch(r"[\u4e00-\u9fff]{2,}", token) and any(
                 token[index : index + 2] in grounding
                 for index in range(len(token) - 1)
+            ):
+                return True
+            # Alphanumeric runs collapse into one token once whitespace is
+            # stripped (e.g. "onwards1"); split letters/digits so study names
+            # with version numbers still match the minutes.
+            if any(
+                part in grounding
+                for part in re.split(r"(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])", token)
+                if len(part) > 1
             ):
                 return True
         return False
@@ -134,6 +152,14 @@ def build_question_graph(
     embedder: Any | None = None,
 ) -> Any:
     model = model_client or QuestionGenerationModelClient()
+    # The model service processes inference requests under a single lock, so two
+    # rerank requests sent in parallel from one graph run queue on the server while
+    # their client-side read timeouts keep ticking from send time.  Serialize the
+    # rerank calls inside the worker so each request only starts once the previous
+    # one has finished and each call gets its own full timeout budget on CPU.  The
+    # lock must live on the event loop that runs this graph, so it is created per
+    # graph run instead of at module import time.
+    rerank_serialization_lock = asyncio.Lock()
     builder = StateGraph(QuestionGenerationState)
 
     async def set_progress(
@@ -389,10 +415,11 @@ def build_question_graph(
                     knowledge_base_id=UUID(state["meeting_context"]["knowledge_base_id"]),
                 )
         query_text = "；".join(query["query"] for query in queries_for(kind, state))[:4000]
-        if reranker is not None:
-            rows = await reranker(query_text, source, 12)
-        else:
-            rows = await rerank_chunks(query_text, source, top_k=12)
+        async with rerank_serialization_lock:
+            if reranker is not None:
+                rows = await reranker(query_text, source, 12)
+            else:
+                rows = await rerank_chunks(query_text, source, top_k=12)
         await set_progress(state, "RERANKING_EVIDENCE", 50, "已完成证据去重与重排")
         return cast(
             QuestionGenerationState,

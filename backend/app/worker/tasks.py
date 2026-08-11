@@ -101,6 +101,24 @@ def _dispatch_queued_ingestion_jobs(job_ids: list[str]) -> dict[str, int]:
     return {"dispatched": dispatched, "failed": failed}
 
 
+def _dispatch_ingestion_jobs(job_rows: list[tuple[str, str]]) -> dict[str, int]:
+    """Dispatch queued jobs and resume legacy review-paused jobs."""
+
+    dispatched = failed = 0
+    for job_id, status in job_rows:
+        task_name = (
+            "app.worker.tasks.resume_ingestion"
+            if status == "WAITING_REVIEW"
+            else "app.worker.tasks.run_ingestion"
+        )
+        try:
+            celery_app.send_task(task_name, args=[job_id])
+            dispatched += 1
+        except Exception:
+            failed += 1
+    return {"dispatched": dispatched, "failed": failed}
+
+
 async def _reconcile_queued_ingestion_jobs() -> dict[str, int]:
     settings = get_settings()
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
@@ -108,12 +126,12 @@ async def _reconcile_queued_ingestion_jobs() -> dict[str, int]:
     try:
         async with factory() as session:
             cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
-            job_ids = list(
+            jobs = list(
                 (
-                    await session.scalars(
-                        select(IngestionJob.job_id)
+                    await session.execute(
+                        select(IngestionJob.job_id, IngestionJob.status)
                         .where(
-                            IngestionJob.status == "QUEUED",
+                            IngestionJob.status.in_(["QUEUED", "WAITING_REVIEW"]),
                             IngestionJob.updated_at <= cutoff,
                         )
                         .order_by(IngestionJob.updated_at)
@@ -121,7 +139,7 @@ async def _reconcile_queued_ingestion_jobs() -> dict[str, int]:
                     )
                 ).all()
             )
-        return _dispatch_queued_ingestion_jobs(job_ids)
+        return _dispatch_ingestion_jobs([(str(job_id), status) for job_id, status in jobs])
     finally:
         await engine.dispose()
 
@@ -400,7 +418,9 @@ async def _run_question_generation(task_id: str) -> dict[str, Any]:
             task = await session.get(AiTask, UUID(task_id))
             if task is not None and (claimed_token is None or task.attempt_token == claimed_token):
                 task.retry_count += 1
-                task.error_code = getattr(exc, "code", "question_generation_failed")
+                task.error_code = str(
+                    getattr(exc, "code", "question_generation_failed")
+                )
                 task.error_message = str(exc)[:2000]
                 retryable = not isinstance(exc, AppException) or exc.status_code >= 500
                 if task.retry_count < task.max_retries and retryable:
@@ -624,7 +644,7 @@ async def _run_analysis(task_id: str) -> dict[str, Any]:
             task = await session.get(AiTask, UUID(task_id))
             if task is not None and (claimed_token is None or task.attempt_token == claimed_token):
                 task.retry_count += 1
-                task.error_code = getattr(exc, "code", "analysis_failed")
+                task.error_code = str(getattr(exc, "code", "analysis_failed"))
                 task.error_message = str(exc)[:2000]
                 retryable = not isinstance(exc, AppException) or exc.status_code >= 500
                 if task.retry_count < task.max_retries and retryable:

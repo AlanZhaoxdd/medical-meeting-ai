@@ -57,7 +57,7 @@ def _question(
 
 
 def test_analysis_prompt_version_is_stable() -> None:
-    assert ANALYSIS_PROMPT_VERSION == "meeting-analysis-v3"
+    assert ANALYSIS_PROMPT_VERSION == "meeting-analysis-v4"
 
 
 def test_analysis_prompt_requires_single_minutes_module() -> None:
@@ -65,19 +65,18 @@ def test_analysis_prompt_requires_single_minutes_module() -> None:
     assert '"minutes"' in ANALYSIS_SYSTEM_PROMPT
     assert '"ai"' in ANALYSIS_SYSTEM_PROMPT
     for section in (
-        "会议总述",
-        "会议概况",
-        "核心结论与共识",
-        "关键决策点",
-        "待确认事项",
-        "分歧与遗留问题",
-        "行动项",
-        "下次会议与跟进安排",
+        "**一、会议概述**",
+        "**二、分歧与焦虑**",
+        "**三、循证数据解读**",
+        "**四、临床用药建议**",
+        "**五、专家共识**",
+        "**六、行动计划**",
     ):
         assert section in ANALYSIS_SYSTEM_PROMPT
-    assert "责任人：xxx；截止时间：xxx；交付物：xxx" in ANALYSIS_SYSTEM_PROMPT
+    assert "第一，…第二，…第三，…" in ANALYSIS_SYSTEM_PROMPT
     assert "未明确" in ANALYSIS_SYSTEM_PROMPT
-    assert "暂未提及" in ANALYSIS_SYSTEM_PROMPT
+    assert "暂无明确行动项" in ANALYSIS_SYSTEM_PROMPT
+    assert "不得编造数值" in ANALYSIS_SYSTEM_PROMPT
 
 
 def test_analysis_thread_id_is_versioned() -> None:

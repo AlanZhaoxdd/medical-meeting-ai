@@ -59,10 +59,37 @@ def load_models() -> None:
     )
 
 
+def warm_up_models() -> None:
+    """Run one short request through both models before reporting healthy.
+
+    CUDA kernels and allocator state are initialized lazily by the first
+    inference. Doing that during startup keeps the warm-up cost out of the
+    first user-facing retrieval request.
+    """
+    if embedding_model is None or reranker_model is None:
+        return
+
+    embedding_model.encode(
+        ["模型预热"],
+        batch_size=1,
+        return_dense=True,
+        return_sparse=True,
+        return_colbert_vecs=False,
+    )
+    reranker_model.compute_score(
+        [["模型预热", "模型预热内容"]],
+        batch_size=1,
+        query_max_length=settings.reranker_query_max_length,
+        max_length=settings.reranker_max_length,
+        normalize=True,
+    )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if not settings.lazy_load:
         await anyio.to_thread.run_sync(load_models)
+        await anyio.to_thread.run_sync(warm_up_models)
     yield
 
 

@@ -6,6 +6,7 @@ import { Plus, Search } from '@element-plus/icons-vue'
 import { kbApi } from '@/api/kb'
 import { useAuthStore } from '@/stores/auth'
 import type { KnowledgeBase } from '@/types/kb'
+import { canAccessSettings } from '@/utils/kb'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -15,7 +16,7 @@ const creating = ref(false)
 const dialog = ref(false)
 const keyword = ref('')
 const form = reactive({ name: '', description: '' })
-const canManage = computed(() => ['owner', 'admin'].includes(auth.user?.role || ''))
+const canManage = computed(() => canAccessSettings(auth.user?.role))
 const filtered = computed(() => {
   const query = keyword.value.trim().toLowerCase()
   return query ? items.value.filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(query)) : items.value

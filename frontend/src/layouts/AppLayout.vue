@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import { canAccessMeetingWorkspace, canAccessSettings, roleLabel } from '@/utils/kb'
 
 const appStore = useAppStore()
 const auth = useAuthStore()
@@ -12,6 +13,8 @@ const router = useRouter()
 const narrowScreen = ref(false)
 let mediaQuery: MediaQueryList | undefined
 const navigationCollapsed = computed(() => narrowScreen.value || appStore.sidebarCollapsed)
+const canViewSettings = computed(() => canAccessSettings(auth.user?.role))
+const canViewMeetingWorkspace = computed(() => canAccessMeetingWorkspace(auth.user?.role))
 const minutesTabs = computed(() => {
   const meetingId = String(route.params.meetingId || '')
   const base = meetingId ? `/meeting-review/${meetingId}` : '/meeting-review'
@@ -57,13 +60,13 @@ async function logout() {
     <el-aside class="sidebar" :width="navigationCollapsed ? '64px' : '232px'">
       <div class="brand">
         <div class="brand-mark">M</div>
-        <span v-show="!navigationCollapsed">医药会议智能分析平台</span>
+        <span v-show="!navigationCollapsed">ConferenceAI 2.0</span>
       </div>
       <el-menu router :collapse="navigationCollapsed" :default-active="activeNavigation" class="nav-menu">
-        <el-menu-item index="/meetings/import" aria-label="导入会议" title="导入会议">
+        <el-menu-item v-if="canViewMeetingWorkspace" index="/meetings/import" aria-label="导入会议" title="导入会议">
           <el-icon><Upload /></el-icon><span>导入会议</span>
         </el-menu-item>
-        <el-sub-menu index="minutes" class="nav-minutes" popper-class="nav-popup" aria-label="会议纪要编辑" title="会议纪要编辑">
+        <el-sub-menu v-if="canViewMeetingWorkspace" index="minutes" class="nav-minutes" popper-class="nav-popup" aria-label="会议纪要编辑" title="会议纪要编辑">
           <template #title><el-icon><Document /></el-icon><span>会议纪要编辑</span></template>
           <el-menu-item :index="minutesTabs.info" class="nav-minutes-info" aria-label="核验基本信息" title="核验基本信息">
             <el-icon><CircleCheck /></el-icon><span>核验基本信息</span>
@@ -75,13 +78,13 @@ async function logout() {
             <el-icon><ChatLineRound /></el-icon><span>开放性问题</span>
           </el-menu-item>
         </el-sub-menu>
-        <el-menu-item index="/meeting-analysis" aria-label="AI 纪要分析" title="AI 纪要分析">
+        <el-menu-item v-if="canViewMeetingWorkspace" index="/meeting-analysis" aria-label="AI 纪要分析" title="AI 纪要分析">
           <el-icon><DataAnalysis /></el-icon><span>AI 纪要分析</span>
         </el-menu-item>
-        <el-menu-item index="/meeting-export" aria-label="会议成果导出" title="会议成果导出">
+        <el-menu-item v-if="canViewMeetingWorkspace" index="/meeting-export" aria-label="会议成果导出" title="会议成果导出">
           <el-icon><Files /></el-icon><span>会议成果导出</span>
         </el-menu-item>
-        <el-sub-menu index="settings" class="nav-settings" popper-class="nav-popup" aria-label="设置" title="设置">
+        <el-sub-menu v-if="canViewSettings" index="settings" class="nav-settings" popper-class="nav-popup" aria-label="设置" title="设置">
           <template #title><el-icon><Collection /></el-icon><span>设置</span></template>
           <el-menu-item index="/knowledge-bases" class="nav-kb" aria-label="知识库管理"><el-icon><Collection /></el-icon><span>知识库管理</span></el-menu-item>
           <el-menu-item index="/benchmarks" class="nav-benchmarks" aria-label="性能评测" title="性能评测"><el-icon><Histogram /></el-icon><span>性能评测</span></el-menu-item>
@@ -93,8 +96,7 @@ async function logout() {
         <el-button v-if="!narrowScreen" text circle :icon="appStore.sidebarCollapsed ? Expand : Fold" :aria-label="appStore.sidebarCollapsed ? '展开导航' : '收起导航'" @click="appStore.toggleSidebar" />
         <div class="topbar-title">医学知识运营中心</div>
         <div class="user-chip">
-          <span>{{ auth.user?.display_name }}</span>
-          <el-tag size="small" effect="plain">{{ auth.user?.role }}</el-tag>
+          <span>{{ roleLabel(auth.user?.role) }}</span>
         </div>
         <el-button text circle :icon="SwitchButton" aria-label="退出登录" @click="logout" />
       </el-header>

@@ -19,7 +19,6 @@ const regeneratingPage = ref<number | null>(null)
 const pollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 let pollToken = 0
 
-const theme = ref<'formal' | 'minimal'>('formal')
 const page_count = ref<'auto' | '6' | '7' | '8'>('auto')
 const include_charts = ref(true)
 const include_references = ref(true)
@@ -135,7 +134,6 @@ async function exportPpt() {
     const count = page_count.value === 'auto' ? undefined : Number(page_count.value)
     const slides = count ? [...outline.value.spec.slides].slice(0, count) : [...outline.value.spec.slides]
     const config: Record<string, unknown> = {
-      theme: theme.value,
       include_charts: include_charts.value,
       include_references: include_references.value,
       anonymous_attendees: anonymous_attendees.value,
@@ -309,12 +307,6 @@ async function loadSources() {
             <el-form-item label="副标题">
               <el-input v-model="outline.spec.subtitle" />
             </el-form-item>
-            <el-form-item label="模板">
-              <el-radio-group v-model="theme">
-                <el-radio-button value="formal">正式商务</el-radio-button>
-                <el-radio-button value="minimal">简洁汇报</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
             <el-form-item label="页数">
               <el-select v-model="page_count">
                 <el-option label="自动（6～8 页）" value="auto" />
@@ -432,7 +424,7 @@ async function loadSources() {
 .card-heading h3 { margin: 0; color: #173f58; font-size: 17px; }
 .card-heading .eyebrow { margin: 0 0 4px; }
 .heading-actions { display: flex; gap: 8px; }
-.form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .slide-list { display: grid; gap: 12px; }
 .slide-row { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 12px; padding: 14px; border: 1px solid #e3ece9; border-radius: 12px; background: #fbfdfc; }
 .slide-order { display: flex; flex-direction: column; align-items: center; gap: 6px; }
@@ -452,7 +444,7 @@ async function loadSources() {
 .render-input { width: 240px; }
 .progress-alert { margin-top: 14px; }
 @media (max-width: 1100px) {
-  .form-grid { grid-template-columns: repeat(2, 1fr); }
+  .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bullet-row { flex-wrap: wrap; }
 }
 </style>

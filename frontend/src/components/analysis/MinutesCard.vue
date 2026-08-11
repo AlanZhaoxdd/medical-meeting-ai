@@ -76,7 +76,11 @@ function onContentClick(event: MouseEvent) {
 .minutes-body { padding-top: 16px; margin-top: 16px; border-top: 1px solid #edf2f0; }
 .minutes-references { margin-top: 20px; padding-top: 16px; border-top: 1px dashed #e2e8f0; }
 :deep(.markdown-body) { color: #314e62; font-size: 14px; line-height: 1.8; }
-:deep(.markdown-body h1), :deep(.markdown-body h2), :deep(.markdown-body h3), :deep(.markdown-body h4) { margin: 18px 0 8px; color: #1d3b55; }
+:deep(.markdown-body h1), :deep(.markdown-body h2), :deep(.markdown-body h3), :deep(.markdown-body h4) { margin: 18px 0 8px; color: #1d3b55; font-weight: 700; }
+:deep(.markdown-body h1) { font-size: 20px; }
+:deep(.markdown-body h2) { font-size: 18px; }
+:deep(.markdown-body h3) { font-size: 16px; }
+:deep(.markdown-body h4) { font-size: 15px; }
 :deep(.markdown-body h1:first-child), :deep(.markdown-body h2:first-child), :deep(.markdown-body h3:first-child) { margin-top: 0; }
 :deep(.markdown-body p), :deep(.markdown-body ul), :deep(.markdown-body ol), :deep(.markdown-body blockquote), :deep(.markdown-body pre), :deep(.markdown-body table) { margin: 10px 0; }
 :deep(.markdown-body ul), :deep(.markdown-body ol) { padding-left: 22px; }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import colorsys
+import html
 import io
 import math
 from typing import Any
@@ -78,7 +79,7 @@ def render_bar_chart_png(spec: dict[str, Any]) -> bytes:
     sub_font = _font(15)
     label_font = _font(16)
     value_font = _font(16, bold=True)
-    categories = [c for c in spec.get("categories", []) if int(c.get("value", 0) or 0) > 0]
+    categories = [c for c in spec.get("categories", []) if float(c.get("value", 0) or 0) > 0]
     categories = categories[:12]
 
     title = str(spec.get("title") or "")
@@ -95,7 +96,15 @@ def render_bar_chart_png(spec: dict[str, Any]) -> bytes:
 
     left, right = 150, width - 60
     top, bottom = y + 8, height - 110
-    max_value = max((int(c.get("value", 0) or 0) for c in categories), default=0)
+    is_cutpoint_distribution = spec.get("chart_mode") == "cutpoint_distribution"
+    # Cutpoint charts use interval bounds only as labels/metadata.  The bar
+    # height must always be the backend-computed count in ``value``.
+    max_value = max((float(c.get("value", 0) or 0) for c in categories), default=0)
+    if not is_cutpoint_distribution:
+        max_value = max(
+            max_value,
+            max((float(c.get("upper", c.get("value", 0)) or 0) for c in categories), default=0),
+        )
     max_value = max(max_value, 1)
 
     grid_max = int(math.ceil(max_value / 2) * 2) or 2
@@ -111,16 +120,25 @@ def render_bar_chart_png(spec: dict[str, Any]) -> bytes:
     slot = (right - left) / max(count, 1)
     bar_width = min(70.0, slot * 0.55)
     for index, category in enumerate(categories):
-        value = int(category.get("value", 0) or 0)
+        value = float(category.get("value", 0) or 0)
+        if is_cutpoint_distribution:
+            lower, upper = 0.0, value
+        else:
+            lower = float(category.get("lower", 0) or 0)
+            upper = float(category.get("upper", value) or value)
         bar_height = max(2.0, (bottom - top) * value / grid_max)
         x0 = left + slot * index + (slot - bar_width) / 2
         x1 = x0 + bar_width
-        y0 = bottom - bar_height
+        y0 = bottom - (bottom - top) * upper / grid_max
+        if upper <= lower:
+            y0 = bottom - bar_height
+        y1 = bottom - (bottom - top) * lower / grid_max
         color = PALETTE[index % len(PALETTE)]
-        draw.rounded_rectangle([x0, y0, x1, bottom], radius=4, fill=color)
+        draw.rounded_rectangle([x0, y0, x1, y1], radius=4, fill=color)
+        value_label = f"{value:g}人" if is_cutpoint_distribution else f"{value:g}{spec.get('unit') or ''}"
         draw.text(
             (x0 + bar_width / 2, y0 - 20),
-            str(value),
+            value_label,
             font=value_font,
             fill=NAVY,
             anchor="ms",
@@ -140,11 +158,9 @@ def render_bar_chart_png(spec: dict[str, Any]) -> bytes:
                 anchor="ma",
             )
 
-    footer = str(
-        spec.get("subtitle")
-        or "统计口径：按独立参会者去重计数；数值由系统根据会议证据统计"
-    )
-    draw.text((40, height - 46), footer[:80], font=sub_font, fill="#8b99a0")
+    footer = str(spec.get("subtitle") or "")
+    if footer:
+        draw.text((40, height - 46), footer[:120], font=sub_font, fill="#8b99a0")
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
@@ -157,8 +173,8 @@ def render_pie_chart_png(spec: dict[str, Any]) -> bytes:
     title_font = _font(24, bold=True)
     sub_font = _font(15)
     label_font = _font(16)
-    categories = [c for c in spec.get("categories", []) if int(c.get("value", 0) or 0) > 0]
-    total = sum(int(c.get("value", 0) or 0) for c in categories)
+    categories = [c for c in spec.get("categories", []) if float(c.get("value", 0) or 0) > 0]
+    total = sum(float(c.get("value", 0) or 0) for c in categories)
 
     y = 28
     title = str(spec.get("title") or "")
@@ -175,7 +191,7 @@ def render_pie_chart_png(spec: dict[str, Any]) -> bytes:
     radius = 170
     start_angle = -90.0
     for index, category in enumerate(categories):
-        value = int(category.get("value", 0) or 0)
+        value = float(category.get("value", 0) or 0)
         if total <= 0:
             break
         span = 360.0 * value / total
@@ -229,13 +245,6 @@ def render_pie_chart_png(spec: dict[str, Any]) -> bytes:
         )
         legend_y += 66
 
-    denominator = spec.get("denominator") or {}
-    draw.text(
-        (40, height - 46),
-        f"样本总人数：{denominator.get('value', total)} · 分类互斥且覆盖全部有效参会者",
-        font=sub_font,
-        fill="#8b99a0",
-    )
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
@@ -261,18 +270,18 @@ def render_chart_svg(spec: dict[str, Any]) -> str:
     ]
     if title:
         parts.append(
-            f'<text x="40" y="46" font-size="24" font-weight="700" fill="#123c53">{title}</text>'
+            f'<text x="40" y="46" font-size="24" font-weight="700" fill="#123c53">{html.escape(title)}</text>'
         )
     if subtitle:
         parts.append(
-            f'<text x="40" y="78" font-size="15" fill="#6f8390">{subtitle}</text>'
+            f'<text x="40" y="78" font-size="15" fill="#6f8390">{html.escape(subtitle)}</text>'
         )
     if chart_type == "pie":
-        total = max(sum(int(c.get("value", 0) or 0) for c in categories), 1)
+        total = max(sum(float(c.get("value", 0) or 0) for c in categories), 1)
         cx, cy, radius = 330, 300, 170
         start = -90.0
         for index, category in enumerate(categories):
-            value = int(category.get("value", 0) or 0)
+            value = float(category.get("value", 0) or 0)
             span = 360.0 * value / total
             color = PALETTE[index % len(PALETTE)]
             large = 1 if span > 180 else 0
@@ -288,13 +297,13 @@ def render_chart_svg(spec: dict[str, Any]) -> str:
             )
             start += span
     else:
-        categories = [c for c in categories if int(c.get("value", 0) or 0) > 0][:12]
-        max_value = max((int(c.get("value", 0) or 0) for c in categories), default=1)
+        categories = [c for c in categories if float(c.get("value", 0) or 0) > 0][:12]
+        max_value = max((float(c.get("value", 0) or 0) for c in categories), default=1)
         left, right, bottom = 150, 900, 520
         top = 130
         slot = (right - left) / max(len(categories), 1)
         for index, category in enumerate(categories):
-            value = int(category.get("value", 0) or 0)
+            value = float(category.get("value", 0) or 0)
             bar_height = max(2, int((bottom - top) * value / max_value))
             x0 = left + slot * index + slot * 0.2
             x1 = x0 + slot * 0.6
@@ -306,7 +315,7 @@ def render_chart_svg(spec: dict[str, Any]) -> str:
             label = str(category.get("label") or category.get("key") or "")
             parts.append(
                 f'<text x="{x0 + (x1 - x0) / 2:.1f}" y="{bottom + 24}" font-size="14" '
-                f'fill="#314e62" text-anchor="middle">{label}</text>'
+                f'fill="#314e62" text-anchor="middle">{html.escape(label)}</text>'
             )
     parts.append("</svg>")
     return "\n".join(parts)

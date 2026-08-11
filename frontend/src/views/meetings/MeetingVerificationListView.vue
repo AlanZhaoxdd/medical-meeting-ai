@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { meetingsApi } from '@/api/meetings'
+import { meetingImportsApi } from '@/api/meetingImports'
 import type { Meeting } from '@/types/meeting'
 import { toApiError } from '@/utils/errors'
 import { attendeeCount, verificationStatusLabels, verificationStatusType } from '@/utils/meetingVerification'
@@ -29,6 +30,18 @@ async function load(page = result.page) {
 const search = () => load(1)
 const open = (meeting: Meeting) => router.push({ name: 'meeting-review-detail', params: { meetingId: meeting.id } })
 const openAnalysis = (meeting: Meeting) => router.push({ name: 'meeting-analysis', params: { meetingId: meeting.id } })
+async function openEdit(meeting: Meeting) {
+  if (!meeting.import_id) {
+    ElMessage.warning('当前会议没有关联的导入纪要，暂时无法进入纪要编辑页')
+    return
+  }
+  try {
+    await meetingImportsApi.reopen(meeting.import_id)
+    await router.push({ name: 'meeting-import-review', params: { importId: meeting.import_id } })
+  } catch (error) {
+    ElMessage.error(toApiError(error).message)
+  }
+}
 const formatDate = (value: string) => dayjs(value).format('YYYY-MM-DD')
 const formatTime = (value: string) => dayjs(value).format('HH:mm')
 const attendeeLabel = (meeting: Meeting) => { const count = attendeeCount(meeting); return count ? `${count} 人` : '未提供' }
@@ -66,6 +79,7 @@ onMounted(() => load(1))
         <el-table-column label="核验状态" width="120"><template #default="{ row }"><el-tag :type="analysisSubmitted(row) ? 'success' : verificationStatusType(row.verification_status ?? 'pending')" effect="light">{{ analysisSubmitted(row) ? '已提交分析' : verificationStatusLabels[row.verification_status ?? 'pending'] }}</el-tag></template></el-table-column>
         <el-table-column label="操作" width="270"><template #default="{ row }"><el-button link type="primary" @click.stop="open(row)">进入核验</el-button><el-button link type="primary" @click.stop="openAnalysis(row)">AI 纪要分析</el-button><el-button link type="danger" :loading="deletingId === row.id" @click.stop="removeMeeting(row)">删除</el-button></template></el-table-column>
         <template #empty><div class="empty-placeholder">{{ loadError ? '加载失败，请重试。' : '暂无待核验会议。' }}</div></template>
+        <el-table-column label="进入编辑" width="110"><template #default="{ row }"><el-button link type="primary" :disabled="!row.import_id" @click.stop="openEdit(row)">进入编辑</el-button></template></el-table-column>
       </el-table>
       <div class="pagination"><el-pagination v-model:current-page="result.page" :page-size="result.page_size" layout="total, prev, pager, next" :total="result.total" @current-change="load" /></div>
     </el-card>

@@ -78,6 +78,9 @@ class ChatMessage(Base):
     scope: Mapped[str] = mapped_column(
         String(32), nullable=False, default="MEETING_AND_KB", server_default="MEETING_AND_KB"
     )
+    # Agent route that produced this message: MEETING_GROUNDED / GENERAL_LLM /
+    # REFUSED. Null for messages persisted before the agent routing feature.
+    route: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     model: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     prompt_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     sources: Mapped[list[dict[str, Any]]] = mapped_column(

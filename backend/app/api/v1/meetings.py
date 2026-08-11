@@ -5,10 +5,12 @@ from typing import Annotated, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import OptionalCurrentUserDependency, require_kb_access
 from app.core.exceptions import AppException
+from app.models.kb import MeetingImport
 from app.db.session import get_session
 from app.models.meeting import AnalysisStatus, MeetingStatus
 from app.schemas.meeting import (
@@ -22,6 +24,25 @@ from app.services.meeting import MeetingService
 
 router = APIRouter(prefix="/meetings", tags=["会议管理"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
+
+
+async def _import_ids_by_meeting(
+    session: AsyncSession, meeting_ids: list[UUID]
+) -> dict[UUID, UUID]:
+    if not meeting_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(MeetingImport.meeting_id, MeetingImport.id)
+            .where(MeetingImport.meeting_id.in_(meeting_ids))
+            .order_by(MeetingImport.created_at.desc())
+        )
+    ).all()
+    result: dict[UUID, UUID] = {}
+    for meeting_id, import_id in rows:
+        if meeting_id is not None:
+            result.setdefault(meeting_id, import_id)
+    return result
 
 
 @router.post(
@@ -69,8 +90,14 @@ async def list_meetings(
         starts_at_to=starts_at_to,
         organization_id=current.organization_id if current else None,
     )
+    import_ids = await _import_ids_by_meeting(session, [item.id for item in items])
     return MeetingListRead.create(
-        items=[MeetingRead.model_validate(item) for item in items],
+        items=[
+            MeetingRead.model_validate(item).model_copy(
+                update={"import_id": import_ids.get(item.id)}
+            )
+            for item in items
+        ],
         page=page,
         page_size=page_size,
         total=total,
@@ -84,7 +111,10 @@ async def get_meeting(
     meeting = await MeetingService(session).get(
         meeting_id, organization_id=current.organization_id if current else None
     )
-    return MeetingRead.model_validate(meeting)
+    import_ids = await _import_ids_by_meeting(session, [meeting.id])
+    return MeetingRead.model_validate(meeting).model_copy(
+        update={"import_id": import_ids.get(meeting.id)}
+    )
 
 
 @router.patch("/{meeting_id}", response_model=MeetingRead, summary="更新会议资料")

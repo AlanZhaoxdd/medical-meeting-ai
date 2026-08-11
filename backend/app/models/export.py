@@ -202,3 +202,83 @@ class ChartSpec(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class ChartCutpointTemplate(Base):
+    """Organization-owned, versioned definitions for medical chart cut-points."""
+
+    __tablename__ = "chart_cutpoint_templates"
+    __table_args__ = (UniqueConstraint("organization_id", "template_key", name="uq_chart_cutpoint_template_org_key"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    latest_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ChartCutpointTemplateVersion(Base):
+    __tablename__ = "chart_cutpoint_template_versions"
+    __table_args__ = (UniqueConstraint("template_id", "version", name="uq_chart_cutpoint_template_version"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    template_id: Mapped[UUID] = mapped_column(ForeignKey("chart_cutpoint_templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    items: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    created_by: Mapped[Optional[UUID]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ChartExtractionSnapshot(Base):
+    """Grounded observations shared by bar and pie chart generations."""
+
+    __tablename__ = "chart_extraction_snapshots"
+    __table_args__ = (UniqueConstraint("meeting_id", "analysis_version", "template_id", "template_version", name="uq_chart_snapshot_meeting_template_version"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    meeting_id: Mapped[UUID] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    analysis_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    template_id: Mapped[UUID] = mapped_column(ForeignKey("chart_cutpoint_templates.id", ondelete="CASCADE"), nullable=False)
+    template_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    observations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    covered_keys: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    excluded_observations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ChartSelection(Base):
+    """User-selected chart ids used by PPT export for a meeting analysis version."""
+
+    __tablename__ = "chart_selections"
+    __table_args__ = (
+        UniqueConstraint(
+            "meeting_id",
+            "analysis_version",
+            name="uq_chart_selection_meeting_version",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    meeting_id: Mapped[UUID] = mapped_column(
+        ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    organization_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+    )
+    analysis_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    chart_ids: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

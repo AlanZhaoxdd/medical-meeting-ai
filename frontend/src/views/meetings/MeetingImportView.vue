@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="meeting-import-page">
     <div class="page-header"><div><p class="eyebrow">MEETING IMPORT</p><h1 class="page-title">导入会议</h1><p class="page-subtitle">上传会议原件，系统会在后台解析并准备审核。</p></div></div>
-    <el-alert v-if="!allowed" title="当前账号没有导入会议的权限" description="请联系组织管理员申请 editor、admin 或 owner 角色。" type="warning" show-icon :closable="false" />
+    <el-alert v-if="!allowed" title="当前账号没有导入会议的权限" description="请联系组织管理员申请纪要编辑员或 IT 管理员角色。" type="warning" show-icon :closable="false" />
     <template v-else>
       <el-alert v-if="errorMessage" class="import-alert" :title="errorMessage" type="error" show-icon :closable="false">
         <el-button v-if="!active" link type="primary" :loading="configLoading" @click="load">重新加载</el-button>

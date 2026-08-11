@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { pinia } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
+import { canAccessMeetingWorkspace, canAccessSettings } from '@/utils/kb'
 
 const LAST_MEETING_IMPORT_ID = 'latest_meeting_import_id'
 
@@ -39,10 +40,10 @@ const router = createRouter({
               : { name: 'meeting-import' }
           },
         },
-        { path: 'knowledge-bases', name: 'knowledge-bases', component: () => import('@/views/kb/KnowledgeBaseListView.vue') },
-        { path: 'knowledge-bases/:id', name: 'knowledge-base-detail', component: () => import('@/views/kb/KnowledgeBaseDetailView.vue') },
-        { path: 'knowledge-bases/:id/documents/:documentId', name: 'kb-document-detail', component: () => import('@/views/kb/DocumentDetailView.vue') },
-        { path: 'benchmarks', name: 'benchmarks', component: () => import('@/views/admin/BenchmarksView.vue') },
+        { path: 'knowledge-bases', name: 'knowledge-bases', component: () => import('@/views/kb/KnowledgeBaseListView.vue'), meta: { adminOnly: true } },
+        { path: 'knowledge-bases/:id', name: 'knowledge-base-detail', component: () => import('@/views/kb/KnowledgeBaseDetailView.vue'), meta: { adminOnly: true } },
+        { path: 'knowledge-bases/:id/documents/:documentId', name: 'kb-document-detail', component: () => import('@/views/kb/DocumentDetailView.vue'), meta: { adminOnly: true } },
+        { path: 'benchmarks', name: 'benchmarks', component: () => import('@/views/admin/BenchmarksView.vue'), meta: { adminOnly: true } },
         // Keep the legacy URLs as compatibility aliases, but make the review console
         // the only meeting-management entry point.
         { path: 'meetings', name: 'meetings', redirect: { name: 'meeting-review' } },
@@ -68,7 +69,15 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore(pinia)
   await auth.initialize()
   if (!to.meta.public && !auth.authenticated) return { path: '/auth', query: { redirect: to.fullPath } }
-  if (to.path === '/auth' && auth.authenticated) return '/meetings/import'
+  if (to.path === '/auth' && auth.authenticated) return canAccessSettings(auth.user?.role) ? '/knowledge-bases' : '/meetings/import'
+  if (to.meta.adminOnly && !canAccessSettings(auth.user?.role)) return '/meetings/import'
+  const isMeetingWorkspace =
+    to.path.startsWith('/meetings') ||
+    to.path.startsWith('/meeting-review') ||
+    to.path.startsWith('/meeting-analysis') ||
+    to.path.startsWith('/meeting-export') ||
+    to.path === '/analysis'
+  if (isMeetingWorkspace && !canAccessMeetingWorkspace(auth.user?.role)) return '/knowledge-bases'
   return true
 })
 

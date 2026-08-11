@@ -1,5 +1,8 @@
 from app.models.chat import ChatConversation, ChatMessage
 from app.models.export import (
+    ChartCutpointTemplate,
+    ChartCutpointTemplateVersion,
+    ChartExtractionSnapshot,
     ChartSpec,
     ExportFileFormat,
     ExportRecord,
@@ -82,6 +85,9 @@ __all__ = [
     "ReviewEvent",
     "User",
     "ChartSpec",
+    "ChartCutpointTemplate",
+    "ChartCutpointTemplateVersion",
+    "ChartExtractionSnapshot",
     "ExportFileFormat",
     "ExportRecord",
     "ExportStatus",

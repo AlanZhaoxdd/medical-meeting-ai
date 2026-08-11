@@ -138,6 +138,7 @@ async function send(text?: string) {
       assistantMessage.content = response.answer
       assistantMessage.messageId = response.messageId
       assistantMessage.conversationId = response.conversationId || conversationId.value
+      assistantMessage.route = response.route
       assistantMessage.sources = response.sources ?? []
       assistantMessage.stage = 'DONE'
       assistantMessage.status =

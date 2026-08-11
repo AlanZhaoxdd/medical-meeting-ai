@@ -35,6 +35,11 @@ from app.services.question_generation import (
 
 CHAT_PROMPT_VERSION = "meeting-chat-v1"
 CHAT_REWRITE_PROMPT_VERSION = "chat-rewrite-v1"
+CHAT_AGENT_PROMPT_VERSION = "meeting-agent-v1"
+CHAT_ROUTE_PROMPT_VERSION = "chat-route-v1"
+GENERAL_ANSWER_PROMPT_VERSION = "general-answer-v1"
+
+CHAT_ROUTES = ("MEETING_GROUNDED", "GENERAL_LLM", "REFUSED")
 
 INSUFFICIENT_ANSWER = (
     "根据当前会议记录和已连接的知识库，暂时无法确认该问题。"
@@ -65,6 +70,36 @@ CHAT_REWRITE_SYSTEM_PROMPT = (
     "1. 只能解析指代和补全省略成分，不得引入对话历史中不存在的事实、数字、药名或假设；\n"
     "2. 如果当前问题已经完整、无需历史即可理解，原样输出；\n"
     "3. 只输出改写后的问题本身，不要解释、不要加引号、不要输出任何其他内容。"
+)
+
+GENERAL_ANSWER_NOTE = "以上为通用知识回答，未引用本次会议或知识库内容。"
+REFUSED_ANSWER = (
+    "该问题超出本次会议智能问答的作答范围，我无法回答。"
+    "你可以围绕本次会议内容、参会者观点或已连接的知识库继续提问。"
+)
+
+CHAT_ROUTE_SYSTEM_PROMPT = (
+    "你是医药会议问答助手的调度器，只输出一个路由标签，不要输出其他任何内容。\n"
+    "可用路由：\n"
+    "- MEETING_GROUNDED：问题与本次会议内容、参会者观点、会议结论或待办，"
+    "或已连接知识库的文档内容相关；\n"
+    "- GENERAL_LLM：问题与会议和知识库无关的通用问题（概念科普、常识、闲聊、写作、计算等）；\n"
+    "- REFUSED：问题涉及个人隐私、违法内容、伤害性内容，"
+    "或要求代替医生给出诊断、用药等具体医疗建议。\n"
+    "判断规则：\n"
+    "1. 优先判断是否与会议或知识库相关，相关则输出 MEETING_GROUNDED；\n"
+    "2. 无法确认或信息不足时输出 MEETING_GROUNDED，由检索路径决定是否有依据；\n"
+    "3. 只输出 MEETING_GROUNDED、GENERAL_LLM 或 REFUSED 三者之一。"
+)
+
+GENERAL_ANSWER_SYSTEM_PROMPT = (
+    "你是医药会议问答助手。当前问题与本次会议和已连接知识库无关，你需要使用通用知识直接回答。\n"
+    "规则：\n"
+    "1. 回答简洁直接，使用简体中文和 Markdown；\n"
+    "2. 不要编造会议记录或知识库内容，也不要虚构引用；\n"
+    "3. 涉及医疗健康内容时说明这是通用知识，仅供参考，具体诊疗请咨询医生；\n"
+    "4. 在回答末尾另起一行输出：\n"
+    f"{GENERAL_ANSWER_NOTE}\n"
 )
 
 
@@ -100,8 +135,10 @@ class MeetingChatModelClient:
         generator: Callable[[dict[str, Any]], Awaitable[str]] | None = None,
         *,
         model_name: str | None = None,
+        prompt_generator: Callable[[str], Awaitable[str]] | None = None,
     ) -> None:
         self.generator = generator
+        self.prompt_generator = prompt_generator
         self.model_name = model_name or get_settings().llm_model or "unconfigured"
 
     async def answer(self, payload: dict[str, Any]) -> str:
@@ -181,6 +218,51 @@ class MeetingChatModelClient:
         if not answer:
             raise AppException(502, "chat_empty_response", "问答模型未返回内容")
         return answer
+
+    async def answer_prompt(self, prompt: str) -> str:
+        """Answer an arbitrary prompt (agent router / general answers)."""
+
+        if self.prompt_generator is not None:
+            return await self.prompt_generator(prompt)
+        settings = get_settings()
+        response = await self._build_model(settings).ainvoke(prompt)
+        content = getattr(response, "content", None)
+        if isinstance(content, list):
+            content = "".join(
+                str(part.get("text", ""))
+                for part in content
+                if isinstance(part, dict)
+            )
+        answer = str(content or "").strip()
+        if not answer:
+            raise AppException(502, "chat_empty_response", "问答模型未返回内容")
+        return answer
+
+    async def stream_prompt(self, prompt: str) -> AsyncIterator[str]:
+        """Stream an arbitrary prompt (agent router / general answers)."""
+
+        if self.prompt_generator is not None:
+            answer = await self.prompt_generator(prompt)
+            if answer:
+                yield answer
+            return
+        settings = get_settings()
+        model = self._build_model(settings)
+        saw_content = False
+        async for chunk in model.astream(prompt):
+            content = getattr(chunk, "content", "")
+            if isinstance(content, list):
+                content = "".join(
+                    str(part.get("text", ""))
+                    for part in content
+                    if isinstance(part, dict)
+                )
+            text = str(content or "")
+            if text:
+                saw_content = True
+                yield text
+        if not saw_content:
+            raise AppException(502, "chat_empty_response", "问答模型未返回内容")
 
 
 def _render_rewrite_history(
@@ -281,6 +363,157 @@ class MeetingChatRewriter:
                 if isinstance(part, dict)
             )
         return str(content or "").strip()
+
+
+def build_route_prompt(
+    question: str,
+    *,
+    scope: str,
+    has_kb: bool,
+    allow_general: bool = True,
+) -> str:
+    """Build the agent routing prompt for one question."""
+
+    kb_available = scope == "MEETING_AND_KB" and has_kb
+    availability = (
+        "当前可检索：确认版会议纪要"
+        + ("和已连接知识库的已发布文档" if kb_available else "")
+        + "。"
+    )
+    general_rule = (
+        ""
+        if allow_general
+        else "\n注意：当前未开放通用知识回答，与会议/知识库无关的问题一律输出 REFUSED。"
+    )
+    return (
+        f"{CHAT_ROUTE_SYSTEM_PROMPT}\n"
+        f"{availability}{general_rule}\n"
+        f"用户问题：{question}\n"
+        f"路由标签："
+    )
+
+
+class MeetingChatRouter:
+    """LLM router deciding how the simple agent answers one question.
+
+    The router is deliberately small: one structured LLM call picks a route,
+    then the agent dispatches to the matching tool (grounded RAG over the
+    meeting/KB, a direct general-knowledge LLM answer, or a refusal). Any
+    model failure or unparseable output falls back to MEETING_GROUNDED so the
+    chat degrades to the previous grounded behaviour instead of failing.
+    """
+
+    def __init__(
+        self,
+        generator: Callable[[str], Awaitable[str]] | None = None,
+        *,
+        model_name: str | None = None,
+    ) -> None:
+        self.generator = generator
+        self.model_name = model_name or get_settings().llm_model or "unconfigured"
+
+    async def route(
+        self,
+        *,
+        question: str,
+        scope: str,
+        has_kb: bool,
+        allow_general: bool = True,
+        max_result_chars: int = 32,
+    ) -> str:
+        prompt = build_route_prompt(
+            question,
+            scope=scope,
+            has_kb=has_kb,
+            allow_general=allow_general,
+        )
+        try:
+            if self.generator is not None:
+                result = await self.generator(prompt)
+            else:
+                result = await self._invoke(prompt)
+        except Exception:
+            return "MEETING_GROUNDED"
+        result = (result or "").strip().strip('"').strip("“”").upper()
+        if not result or len(result) > max_result_chars:
+            return "MEETING_GROUNDED"
+        for route_name in CHAT_ROUTES:
+            if route_name in result:
+                return route_name
+        return "MEETING_GROUNDED"
+
+    async def _invoke(self, prompt: str) -> str:
+        settings = get_settings()
+        if (
+            not settings.llm_base_url
+            or not settings.resolved_llm_api_key
+            or not settings.llm_model
+        ):
+            raise AppException(503, "chat_model_unavailable", "AI 问答模型不可用，请检查 LLM 配置")
+        response = await MeetingChatModelClient._build_model(settings).ainvoke(prompt)
+        content = getattr(response, "content", None)
+        if isinstance(content, list):
+            content = "".join(
+                str(part.get("text", ""))
+                for part in content
+                if isinstance(part, dict)
+            )
+        return str(content or "").strip()
+
+
+def build_general_prompt(question: str) -> str:
+    """Build the direct general-knowledge answer prompt."""
+
+    return (
+        f"{GENERAL_ANSWER_SYSTEM_PROMPT}\n"
+        f"用户问题：{question}\n"
+    )
+
+
+def build_refused_response(
+    *,
+    conversation_id: UUID | None,
+    message_id: UUID | None = None,
+) -> MeetingChatResponse:
+    """Fixed refusal used when the question is outside the agent's scope."""
+
+    return MeetingChatResponse(
+        conversation_id=conversation_id or uuid4(),
+        message_id=message_id or uuid4(),
+        answer=REFUSED_ANSWER,
+        status="COMPLETED",
+        sources=[],
+        suggested_questions=[],
+        route="REFUSED",
+    )
+
+
+async def generate_general_answer(
+    *,
+    question: str,
+    conversation_id: UUID | None,
+    model_client: MeetingChatModelClient | None = None,
+) -> MeetingChatResponse:
+    """Direct LLM answer for questions unrelated to the meeting/KB."""
+
+    conversation = conversation_id or uuid4()
+    message_id = uuid4()
+    client = model_client or MeetingChatModelClient()
+    try:
+        answer = await client.answer_prompt(build_general_prompt(question))
+    except AppException:
+        raise
+    except Exception as exc:
+        raise AppException(502, "chat_generation_failed", "问答生成失败，请稍后重试") from exc
+    return MeetingChatResponse(
+        conversation_id=conversation,
+        message_id=message_id,
+        answer=answer.strip() or GENERAL_ANSWER_NOTE,
+        status="COMPLETED",
+        sources=[],
+        suggested_questions=[],
+        route="GENERAL_LLM",
+    )
 
 
 async def load_chat_context(
@@ -605,6 +838,7 @@ def _build_completed_chat_response(
         ),
         sources=[MeetingChatSource.model_validate(item) for item in normalized_sources],
         suggested_questions=[],
+        route="MEETING_GROUNDED",
     )
 
 
@@ -628,6 +862,7 @@ async def generate_chat_answer(
             status="INSUFFICIENT_CONTEXT",
             sources=[],
             suggested_questions=[],
+            route="MEETING_GROUNDED",
         )
 
     client = model_client or MeetingChatModelClient()
@@ -721,6 +956,7 @@ async def persist_user_message(
     question: str,
     rewritten_question: str | None,
     scope: str,
+    route: str | None = None,
 ) -> ChatMessage:
     message = ChatMessage(
         conversation_id=conversation_id,
@@ -728,6 +964,7 @@ async def persist_user_message(
         question=question,
         rewritten_question=rewritten_question,
         scope=scope,
+        route=route,
     )
     session.add(message)
     await session.commit()
@@ -744,6 +981,7 @@ async def persist_assistant_message(
     model: str | None,
     prompt_version: str | None,
     sources: list[dict[str, Any]],
+    route: str | None = None,
     error_code: str | None = None,
     error_message: str | None = None,
 ) -> ChatMessage:
@@ -754,6 +992,7 @@ async def persist_assistant_message(
         answer=answer,
         status=status,
         scope=scope,
+        route=route,
         model=model,
         prompt_version=prompt_version,
         sources=sources,
@@ -774,14 +1013,16 @@ async def stream_meeting_question(
     created_by: UUID | None = None,
     model_client: MeetingChatModelClient | None = None,
     rewriter: MeetingChatRewriter | None = None,
+    router: MeetingChatRouter | None = None,
     retriever: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None,
     reranker: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Run the grounded chat flow and emit stage, delta and done events.
+    """Run the simple agent chat flow and emit stage, delta and done events.
 
-    The conversation and every user/assistant message are persisted. The
-    current question is rewritten against recent history (when present) before
-    retrieval so follow-ups work without shipping raw history into the prompt.
+    When the agent is enabled, the LLM first classifies the question and the
+    agent dispatches to the grounded RAG path, a direct general-knowledge
+    answer, or a refusal. The conversation and every user/assistant message
+    are persisted; the route taken is stored on both messages for audit.
     """
 
     need_kb = payload.scope == "MEETING_AND_KB"
@@ -808,6 +1049,17 @@ async def stream_meeting_question(
     effective_question = await rewrite_client.rewrite(
         history=history, question=payload.question
     )
+    settings = get_settings()
+    route = "MEETING_GROUNDED"
+    if settings.chat_agent_enabled:
+        yield {"type": "stage", "stage": "ROUTING"}
+        route_client = router or MeetingChatRouter()
+        route = await route_client.route(
+            question=effective_question,
+            scope=payload.scope,
+            has_kb=context.get("kb") is not None,
+            allow_general=settings.chat_general_answers_enabled,
+        )
     await persist_user_message(
         session,
         conversation_id=conversation.id,
@@ -816,7 +1068,79 @@ async def stream_meeting_question(
             effective_question if effective_question != payload.question else None
         ),
         scope=payload.scope,
+        route=route,
     )
+    client = model_client or MeetingChatModelClient()
+
+    if route == "GENERAL_LLM":
+        yield {"type": "stage", "stage": "GENERAL_LLM"}
+        general_parts: list[str] = []
+        try:
+            async for delta in client.stream_prompt(
+                build_general_prompt(effective_question)
+            ):
+                general_parts.append(delta)
+                yield {"type": "delta", "delta": delta}
+        except Exception as exc:
+            code = getattr(exc, "code", "chat_generation_failed")
+            message = getattr(exc, "message", "问答生成失败，请稍后重试")
+            await persist_assistant_message(
+                session,
+                conversation_id=conversation.id,
+                answer=None,
+                status="FAILED",
+                scope=payload.scope,
+                route=route,
+                model=client.model_name,
+                prompt_version=GENERAL_ANSWER_PROMPT_VERSION,
+                sources=[],
+                error_code=code,
+                error_message=message,
+            )
+            if isinstance(exc, AppException):
+                raise
+            raise AppException(502, "chat_generation_failed", "问答生成失败，请稍后重试") from exc
+        response = MeetingChatResponse(
+            conversation_id=conversation.id,
+            message_id=uuid4(),
+            answer="".join(general_parts).strip() or GENERAL_ANSWER_NOTE,
+            status="COMPLETED",
+            sources=[],
+            suggested_questions=[],
+            route="GENERAL_LLM",
+        )
+        message = await persist_assistant_message(
+            session,
+            conversation_id=conversation.id,
+            answer=response.answer,
+            status=response.status,
+            scope=payload.scope,
+            route=response.route,
+            model=client.model_name,
+            prompt_version=GENERAL_ANSWER_PROMPT_VERSION,
+            sources=[],
+        )
+        response.message_id = message.id
+        yield {"type": "done", **response.model_dump(mode="json")}
+        return
+
+    if route == "REFUSED":
+        response = build_refused_response(conversation_id=conversation.id)
+        message = await persist_assistant_message(
+            session,
+            conversation_id=conversation.id,
+            answer=response.answer,
+            status=response.status,
+            scope=payload.scope,
+            route=response.route,
+            model=client.model_name,
+            prompt_version=CHAT_AGENT_PROMPT_VERSION,
+            sources=[],
+        )
+        response.message_id = message.id
+        yield {"type": "done", **response.model_dump(mode="json")}
+        return
+
     effective_need_kb = need_kb and context.get("kb") is not None
     if effective_need_kb:
         yield {"type": "stage", "stage": "RETRIEVING_KB"}
@@ -829,7 +1153,6 @@ async def stream_meeting_question(
         reranker=reranker,
     )
     sources = build_chat_sources(context, chunks)
-    client = model_client or MeetingChatModelClient()
     if not sources:
         response = MeetingChatResponse(
             conversation_id=conversation.id,
@@ -838,6 +1161,7 @@ async def stream_meeting_question(
             status="INSUFFICIENT_CONTEXT",
             sources=[],
             suggested_questions=[],
+            route="MEETING_GROUNDED",
         )
         message = await persist_assistant_message(
             session,
@@ -845,6 +1169,7 @@ async def stream_meeting_question(
             answer=response.answer,
             status=response.status,
             scope=payload.scope,
+            route="MEETING_GROUNDED",
             model=client.model_name,
             prompt_version=CHAT_PROMPT_VERSION,
             sources=[],
@@ -870,6 +1195,7 @@ async def stream_meeting_question(
             answer=None,
             status="FAILED",
             scope=payload.scope,
+            route="MEETING_GROUNDED",
             model=client.model_name,
             prompt_version=CHAT_PROMPT_VERSION,
             sources=[],
@@ -891,6 +1217,7 @@ async def stream_meeting_question(
         answer=response.answer,
         status=response.status,
         scope=payload.scope,
+        route="MEETING_GROUNDED",
         model=client.model_name,
         prompt_version=CHAT_PROMPT_VERSION,
         sources=[source.model_dump(mode="json") for source in response.sources],
@@ -908,10 +1235,11 @@ async def answer_meeting_question(
     created_by: UUID | None = None,
     model_client: MeetingChatModelClient | None = None,
     rewriter: MeetingChatRewriter | None = None,
+    router: MeetingChatRouter | None = None,
     retriever: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None,
     reranker: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None,
 ) -> MeetingChatResponse:
-    """Answer one turn with persistence and follow-up rewriting (JSON mode)."""
+    """Answer one turn as a simple agent with persistence (JSON mode)."""
 
     need_kb = payload.scope == "MEETING_AND_KB"
     context = await load_chat_context(
@@ -936,6 +1264,16 @@ async def answer_meeting_question(
     effective_question = await rewrite_client.rewrite(
         history=history, question=payload.question
     )
+    settings = get_settings()
+    route = "MEETING_GROUNDED"
+    if settings.chat_agent_enabled:
+        route_client = router or MeetingChatRouter()
+        route = await route_client.route(
+            question=effective_question,
+            scope=payload.scope,
+            has_kb=context.get("kb") is not None,
+            allow_general=settings.chat_general_answers_enabled,
+        )
     await persist_user_message(
         session,
         conversation_id=conversation.id,
@@ -944,7 +1282,46 @@ async def answer_meeting_question(
             effective_question if effective_question != payload.question else None
         ),
         scope=payload.scope,
+        route=route,
     )
+    client = model_client or MeetingChatModelClient()
+
+    if route == "GENERAL_LLM":
+        response = await generate_general_answer(
+            question=effective_question,
+            conversation_id=conversation.id,
+            model_client=client,
+        )
+        message = await persist_assistant_message(
+            session,
+            conversation_id=conversation.id,
+            answer=response.answer,
+            status=response.status,
+            scope=payload.scope,
+            route=response.route,
+            model=client.model_name,
+            prompt_version=GENERAL_ANSWER_PROMPT_VERSION,
+            sources=[],
+        )
+        response.message_id = message.id
+        return response
+
+    if route == "REFUSED":
+        response = build_refused_response(conversation_id=conversation.id)
+        message = await persist_assistant_message(
+            session,
+            conversation_id=conversation.id,
+            answer=response.answer,
+            status=response.status,
+            scope=payload.scope,
+            route=response.route,
+            model=client.model_name,
+            prompt_version=CHAT_AGENT_PROMPT_VERSION,
+            sources=[],
+        )
+        response.message_id = message.id
+        return response
+
     effective_need_kb = need_kb and context.get("kb") is not None
     chunks = await retrieve_chat_evidence(
         session,
@@ -955,7 +1332,6 @@ async def answer_meeting_question(
         reranker=reranker,
     )
     sources = build_chat_sources(context, chunks)
-    client = model_client or MeetingChatModelClient()
     try:
         response = await generate_chat_answer(
             question=effective_question,
@@ -973,6 +1349,7 @@ async def answer_meeting_question(
             answer=None,
             status="FAILED",
             scope=payload.scope,
+            route="MEETING_GROUNDED",
             model=client.model_name,
             prompt_version=CHAT_PROMPT_VERSION,
             sources=[],
@@ -986,6 +1363,7 @@ async def answer_meeting_question(
         answer=response.answer,
         status=response.status,
         scope=payload.scope,
+        route="MEETING_GROUNDED",
         model=client.model_name,
         prompt_version=CHAT_PROMPT_VERSION,
         sources=[source.model_dump(mode="json") for source in response.sources],

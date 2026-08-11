@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any, TypedDict
 from uuid import UUID
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -61,8 +62,6 @@ PROGRESS = {
     "embed_chunks": 60,
     "extract_knowledge": 75,
     "validate_evidence": 84,
-    "save_draft": 90,
-    "review_gate": 92,
     "publish_document": 97,
     "finalize": 100,
 }
@@ -270,6 +269,7 @@ def pool_chunk_records(
     unit_sparse: list[dict[int, float]],
     *,
     embedding_identity: str,
+    publication_status: str = "DRAFT",
 ) -> list[dict[str, Any]]:
     """Build Milvus records from one embedding pass over semantic units."""
 
@@ -287,7 +287,7 @@ def pool_chunk_records(
                 ),
                 "document_id": str(document.id),
                 "document_version": document.version,
-                "publication_status": "DRAFT",
+                "publication_status": publication_status,
                 "content_type": chunk["content_type"],
                 "dense_vector": pooled_dense(indexes, unit_dense),
                 "sparse_vector": pooled_sparse(indexes, unit_sparse),
@@ -429,6 +429,7 @@ async def _build_chunks(session: AsyncSession, state: IngestionState) -> dict[st
             unit_dense,
             unit_sparse,
             embedding_identity=settings.embedding_identity,
+            publication_status=("DRAFT" if state.get("vector_only") else "PUBLISHED"),
         )
         vector_store = VectorStore()
         await vector_store.delete_document(str(document.id))
@@ -497,7 +498,9 @@ async def _embed_chunks(session: AsyncSession, state: IngestionState) -> dict[st
                         ),
                         "document_id": str(document.id),
                         "document_version": document.version,
-                        "publication_status": chunk.publication_status,
+                        "publication_status": (
+                            "DRAFT" if state.get("vector_only") else "PUBLISHED"
+                        ),
                         "content_type": chunk.content_type,
                         "dense_vector": embedding["dense"],
                         "sparse_vector": {
@@ -596,7 +599,9 @@ async def _extract_knowledge(session: AsyncSession, state: IngestionState) -> di
                 extraction_template_version=document.template_version,
                 prompt_version="kb-extraction-v1",
                 model_name=settings.llm_model,
-                review_status="PENDING",
+                # Review is no longer a user-facing workflow. Keep the legacy
+                # column populated for existing data and API compatibility.
+                review_status="APPROVED",
                 publication_status="DRAFT",
                 revision=1,
             )
@@ -643,18 +648,30 @@ async def _validate_evidence(session: AsyncSession, state: IngestionState) -> di
     return {"validated_items": len(items)}
 
 
-async def _save_draft(session: AsyncSession, state: IngestionState) -> dict[str, Any]:
-    document = await _document(session, state)
-    document.status = DocumentStatus.AWAITING_REVIEW.value
-    await session.commit()
-    return {"document_status": document.status}
-
-
 async def _publish_document(session: AsyncSession, state: IngestionState) -> dict[str, Any]:
     document = await _document(session, state)
-    if document.status != DocumentStatus.PUBLISHED.value:
-        raise AppException(409, "review_not_published", "人工审核发布尚未完成")
-    return {"document_status": document.status}
+    # Documents are published automatically after parsing, vectorization and
+    # evidence validation. The legacy manual-publish branch below is retained
+    # only as a compatibility fallback for old checkpoints.
+    document.status = DocumentStatus.PUBLISHED.value
+    document.published_at = datetime.now(timezone.utc)
+    document.vector_sync_status = "SYNCED"
+    await session.execute(
+        text(
+            "UPDATE chunks SET publication_status = 'PUBLISHED' "
+            "WHERE document_id = :document_id"
+        ),
+        {"document_id": document.id},
+    )
+    await session.execute(
+        text(
+            "UPDATE knowledge_items SET review_status = 'APPROVED', "
+            "publication_status = 'PUBLISHED' WHERE document_id = :document_id"
+        ),
+        {"document_id": document.id},
+    )
+    await session.commit()
+    return {"document_status": document.status, "auto_published": True}
 
 
 async def _finalize(session: AsyncSession, state: IngestionState) -> dict[str, Any]:
@@ -669,7 +686,6 @@ HANDLERS: dict[str, NodeHandler] = {
     "embed_chunks": _embed_chunks,
     "extract_knowledge": _extract_knowledge,
     "validate_evidence": _validate_evidence,
-    "save_draft": _save_draft,
     "publish_document": _publish_document,
     "finalize": _finalize,
 }
@@ -728,16 +744,7 @@ def build_graph(
         builder.add_node(node_name, node)
 
     async def review_gate(state: IngestionState) -> IngestionState:
-        async with session_factory() as session:
-            await publish_progress(
-                session,
-                state["job_id"],
-                status="WAITING_REVIEW",
-                node="review_gate",
-                progress=PROGRESS["review_gate"],
-                summary=state.get("summary"),
-            )
-        interrupt({"job_id": state["job_id"], "status": "WAITING_REVIEW"})
+        # Kept as a no-op so jobs created by the former workflow can resume.
         return {"status": "review_gate"}
 
     builder.add_node("review_gate", review_gate)
@@ -755,8 +762,6 @@ def build_graph(
         "embed_chunks",
         "extract_knowledge",
         "validate_evidence",
-        "save_draft",
-        "review_gate",
         "publish_document",
         "finalize",
     ]
@@ -769,6 +774,9 @@ def build_graph(
             )
         else:
             builder.add_edge(source, target)
+    # Legacy waiting jobs can still be resumed after the review workflow was
+    # removed. New jobs never enter this node.
+    builder.add_edge("review_gate", "publish_document")
     builder.add_edge("finalize", END)
     return builder.compile(checkpointer=checkpointer)
 
@@ -882,6 +890,17 @@ async def run_graph(job_id: str, *, resume: bool = False) -> None:
                                     "revision_version", state.get("revision_version")
                                 ),
                             },
+                            terminal=True,
+                        )
+                else:
+                    async with session_factory() as session:
+                        await publish_progress(
+                            session,
+                            job_id,
+                            status="COMPLETED",
+                            node="finalize",
+                            progress=100,
+                            summary={"published": True, "auto_published": True},
                             terminal=True,
                         )
     finally:

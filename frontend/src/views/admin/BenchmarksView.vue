@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import { benchmarksApi } from '@/api/benchmarks'
 import { useAuthStore } from '@/stores/auth'
+import { canAccessSettings } from '@/utils/kb'
 import type {
   BenchmarkEnvironment,
   BenchmarkKind,
@@ -12,7 +13,7 @@ import type {
 } from '@/types/benchmark'
 
 const auth = useAuthStore()
-const canManage = computed(() => ['owner', 'admin'].includes(auth.user?.role || ''))
+const canManage = computed(() => canAccessSettings(auth.user?.role))
 const runs = ref<BenchmarkRun[]>([])
 const loading = ref(false)
 const environment = ref<BenchmarkEnvironment | null>(null)

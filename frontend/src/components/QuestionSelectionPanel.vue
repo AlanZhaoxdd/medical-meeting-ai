@@ -10,6 +10,7 @@ const props = defineProps<{
   swapLoadingId: string | null
   poolExhausted: { cut_point: boolean; open_ended: boolean }
   showMoreAvailable: { cut_point: boolean; open_ended: boolean }
+  showMoreCount: { cut_point: number; open_ended: number }
   readonly?: boolean
   saving?: boolean
   groups?: Array<'cut_point' | 'open_ended'>
@@ -61,7 +62,7 @@ function toggle(question: QuestionCandidate) {
         </div>
         <div class="group-actions">
           <span class="selection-count">已选 {{ [...selectedIds].filter((id) => group.questions.some((q) => q.id === id)).length }} 条</span>
-          <el-button v-if="showMoreAvailable[group.key]" size="small" plain @click="emit('showMore', group.key)">查看后 5 条候选</el-button>
+          <el-button v-if="showMoreAvailable[group.key]" size="small" plain @click="emit('showMore', group.key)">查看后 {{ showMoreCount[group.key] }} 条候选</el-button>
           <el-button v-if="!readonly" size="small" type="primary" plain :icon="Plus" :loading="saving" @click="emit('add', group.key)">新增问题</el-button>
         </div>
       </div>

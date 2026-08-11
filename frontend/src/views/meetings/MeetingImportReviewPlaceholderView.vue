@@ -28,7 +28,9 @@ const dirtyMetadata = reactive(new Set<string>())
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 let saveChain: Promise<void> = Promise.resolve()
 const conflictMessage = ref('')
-const sourceBlockId = ref('')
+type MetadataSource = { block_id?: string; quote?: string; page_number?: number; [key: string]: unknown }
+const sourceVisible = ref(false)
+const selectedSource = ref<MetadataSource>()
 const editorFocused = ref(false)
 const searchOpen = ref(false)
 const searchQuery = ref('')
@@ -292,12 +294,19 @@ function hasMetadataSource(field?: ReviewMetadataField) {
   return Boolean(field.source.block_id)
 }
 
-function locateSource(field: ReviewMetadataField) {
-  const source = Array.isArray(field.source) ? field.source[0] : field.source
-  const blockId = source?.block_id
-  if (!blockId || !review.value?.original_blocks.some((block) => block.id === blockId)) return
-  sourceBlockId.value = blockId
-  void nextTick(() => document.getElementById(`block-${blockId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+const selectedSourceText = computed(() => {
+  const source = selectedSource.value
+  if (!source) return '暂无可展示的原文片段'
+  const block = review.value?.original_blocks.find((item) => item.id === source.block_id)
+  return source.quote?.trim() || block?.text || '暂无可展示的原文片段'
+})
+
+function openSource(field: ReviewMetadataField) {
+  const sources = Array.isArray(field.source) ? field.source : field.source ? [field.source] : []
+  const source = sources.find((item) => item?.block_id) || sources[0]
+  if (!source) return
+  selectedSource.value = source
+  sourceVisible.value = true
 }
 
 function openSearch() {
@@ -543,7 +552,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKeydown); window
                 <el-input v-else-if="field.multiline" type="textarea" :rows="3" :model-value="metadata[field.key]?.value || ''" :readonly="!editable" @update:model-value="(value: string) => setMetadataValue(field.key, value)" />
                 <el-input v-else :model-value="metadata[field.key]?.value || ''" :readonly="!editable" @update:model-value="(value: string) => setMetadataValue(field.key, value)" />
                 <div class="suggestion" v-if="metadata[field.key]?.suggested_value && metadata[field.key]?.suggested_value !== metadata[field.key]?.value"><InfoFilled />建议：{{ metadata[field.key].suggested_value }} <span v-if="metadata[field.key]?.confidence_label">· {{ metadata[field.key]?.confidence_label }}</span></div>
-                <div class="field-footer" v-if="hasMetadataSource(metadata[field.key]) || metadata[field.key]?.user_modified"><el-button v-if="hasMetadataSource(metadata[field.key])" text size="small" @click="locateSource(metadata[field.key])">查看原文来源</el-button><span v-if="metadata[field.key]?.user_modified">已手动修改</span></div>
+                <div class="field-footer" v-if="hasMetadataSource(metadata[field.key]) || metadata[field.key]?.user_modified"><el-button v-if="hasMetadataSource(metadata[field.key])" native-type="button" text size="small" @click="openSource(metadata[field.key])">查看原文来源</el-button><span v-if="metadata[field.key]?.user_modified">已手动修改</span></div>
               </el-form-item>
             </el-form>
             <div class="metadata-footer"><span>会议信息与正文均会自动保存</span><el-button class="metadata-save" :disabled="!editable" :loading="metadataSaving" @click="saveMetadata">保存会议信息</el-button></div>
@@ -555,7 +564,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKeydown); window
               <div class="transcript-window-toolbar"><div><strong>会议纪要正文</strong><span>{{ revisionEditable ? '可直接编辑' : '当前账号无编辑权限' }}</span></div><div class="transcript-window-actions"><el-button class="find-replace-button" type="primary" :icon="Search" aria-label="打开查找替换" @click="openSearch">查找替换</el-button><el-button text size="small" @click="historyOpen = true">版本记录</el-button></div></div>
               <div v-if="searchOpen" class="search-bar" role="search"><el-input v-model="searchQuery" class="review-search-input" placeholder="查找原文（字面匹配）" clearable /><el-input v-model="replacementText" placeholder="替换为" /><el-checkbox v-model="searchCaseSensitive">区分大小写</el-checkbox><span class="match-count" aria-live="polite">{{ totalMatches ? currentMatch + 1 : 0 }}/{{ totalMatches }}</span><el-button text @click="moveMatch(-1)">上一个</el-button><el-button text @click="moveMatch(1)">下一个</el-button><el-button :disabled="!revisionEditable || !totalMatches" @click="replace('CURRENT')">替换当前</el-button><el-button type="warning" plain :disabled="!revisionEditable || !totalMatches" @click="replace('ALL')">替换全部</el-button><el-button v-if="lastOperationId" text @click="undoReplace">批量撤销</el-button><el-button text @click="searchOpen = false">关闭</el-button></div>
               <div class="block-list" aria-label="连续会议纪要编辑窗口">
-                <article v-for="(block, index) in blocksForDisplay" :id="`block-${block.id}`" :key="block.id" class="transcript-block" :class="{ 'is-source': sourceBlockId === block.id, 'is-current': current?.blockId === block.id }">
+                <article v-for="(block, index) in blocksForDisplay" :id="`block-${block.id}`" :key="block.id" class="transcript-block" :class="{ 'is-current': current?.blockId === block.id }">
                   <textarea v-if="revisionEditable && !searchQuery" v-model="block.text" rows="1" :aria-label="`编辑纪要内容 ${index + 1}`" @input="scheduleBlockSave(block)" @blur="saveBlock(block)" />
                   <template v-else-if="isTableBlock(block) && !searchQuery"><table class="table-preview"><tbody><tr v-for="(row, rowIndex) in parseMarkdownTable(tableBlockText(block))" :key="rowIndex"><td v-for="(cell, cellIndex) in row" :key="cellIndex">{{ cell }}</td></tr></tbody></table></template>
                   <!-- eslint-disable-next-line vue/no-v-html -->
@@ -571,6 +580,13 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKeydown); window
     <el-dialog v-model="historyOpen" title="版本记录" width="min(680px, 92vw)">
       <div class="history-list"><el-card v-for="item in review?.revisions" :key="item.id" shadow="never" class="history-card"><div><strong>修订 {{ item.revision_number }}</strong><el-tag size="small">{{ item.status || 'DRAFT' }}</el-tag><p>{{ item.creator || item.created_by || '系统' }} · {{ item.updated_at || item.created_at || '未知时间' }}</p></div><el-button @click="openHistory(item)">打开只读版本</el-button></el-card><el-empty v-if="!review?.revisions?.length" description="暂无历史修订" /></div>
       <div v-if="selectedHistory" class="history-preview"><p class="history-preview-title">修订 {{ selectedHistory.revision_number }}（只读）</p><p v-for="block in selectedHistory.blocks" :key="block.id" class="history-preview-block">{{ cleanTranscriptText(block.text, block.type || block.block_type) }}</p></div>
+    </el-dialog>
+    <el-dialog v-model="sourceVisible" title="原文来源" width="min(720px, 92vw)" destroy-on-close>
+      <div class="source-preview">
+        <p v-if="selectedSource?.page_number != null" class="source-preview-meta">原文页码：第 {{ selectedSource.page_number }} 页</p>
+        <p class="source-preview-label">原文片段</p>
+        <blockquote>{{ selectedSourceText }}</blockquote>
+      </div>
     </el-dialog>
   </section>
 </template>
@@ -652,6 +668,10 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKeydown); window
 .history-preview { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .history-preview-title { margin: 0 0 8px; color: var(--navy); font-weight: 700; }
 .history-preview-block { margin: 0; padding: 8px 0; border-bottom: 1px solid #e9efed; white-space: pre-wrap; line-height: 1.65; }
+.source-preview { padding: 4px 8px 12px; }
+.source-preview-meta, .source-preview-label { margin: 0 0 8px; color: #71888a; font-size: 12px; }
+.source-preview-label { font-weight: 700; }
+.source-preview blockquote { margin: 0; padding: 14px 16px; border-left: 3px solid #6bc5b1; border-radius: 4px; color: #334f5c; background: #f2fbf8; line-height: 1.8; white-space: pre-wrap; }
 @media (max-width: 920px) { .review-header { align-items: flex-start; flex-direction: column; } .review-actions { width: 100%; } .review-actions .el-button { flex: 1; } .document-paper { padding-inline: clamp(20px, 5vw, 60px); } .vectorization-card { margin-inline: 0; } }
 @media (max-width: 600px) { .search-bar .el-input { width: 100%; } .review-actions { flex-direction: column; } .review-actions .el-button { width: 100%; } .document-paper { padding: 34px 16px 44px; } .paper-subtitle { margin-bottom: 28px; } .metadata-form :deep(.el-form-item) { display: block; } .metadata-form :deep(.el-form-item__label) { display: block; line-height: 24px; } .date-range-fields { align-items: stretch; flex-wrap: wrap; } .date-range-fields .el-date-editor { width: 100%; flex-basis: 100%; } .metadata-footer { align-items: flex-start; flex-direction: column; } .metadata-save { width: 100%; } .transcript-window-toolbar { align-items: flex-start; flex-direction: column; } .transcript-window-actions { width: 100%; justify-content: space-between; } .block-list { max-height: 480px; padding: 16px; } }
 @media (prefers-color-scheme: dark) { .document-paper, .transcript-window { border-color: #2b4c56; background: #142b36; } .review-title, .paper-title, .section-heading h2, .history-preview-title, .transcript-window-toolbar strong { color: #d8ecea; } .review-subtitle, .paper-subtitle, .block-text, .transcript-block textarea, .history-preview-block { color: #d8ecea; } .transcript-window-toolbar, .search-bar { border-color: #2b4c56; background: #1c333c; } .metadata-form :deep(.el-form-item__label) { color: #b8cece; } .metadata-form :deep(.el-input__wrapper), .metadata-form :deep(.el-textarea__inner) { background: #1c3a43; } .table-preview { color: #d8ecea; } .table-preview td { border-color: #2b4c56; } .table-preview tr:first-child td { color: #d8ecea; background: #1c3a43; } .transcript-block.is-current { background: #3b3827; } .transcript-block textarea:focus { background: #1c3a43; box-shadow: 0 0 0 4px #1c3a43; } }

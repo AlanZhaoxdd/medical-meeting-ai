@@ -8,41 +8,40 @@ from typing import Any
 from app.schemas.export import TextExportSection, TextPreviewRead
 from app.services.export_bundle import (
     AnalysisBundle,
-    normalize_speaker_name,
     source_index,
 )
 
 
 SECTION_HEADERS: list[tuple[str, str]] = [
-    ("summary", "会议总述"),
-    ("overview", "会议概况"),
-    ("consensus", "核心结论与共识"),
-    ("decisions", "关键决策点"),
-    ("open_items", "待确认事项"),
-    ("divergence", "分歧与遗留问题"),
-    ("actions", "行动项"),
-    ("next_meeting", "下次会议与跟进安排"),
+    ("overview", "会议概述"),
+    ("divergence", "分歧与焦虑"),
+    ("evidence", "循证数据解读"),
+    ("clinical", "临床用药建议"),
+    ("consensus", "专家共识"),
+    ("actions", "行动计划"),
 ]
 
 SECTION_ALIASES: dict[str, str] = {
+    "会议概述": "overview",
     "会议总述": "summary",
     "会议概况": "overview",
-    "核心结论与共识": "consensus",
-    "共识": "consensus",
-    "关键决策点": "decisions",
-    "切点问题": "decisions",
-    "待确认事项": "open_items",
-    "开放性问题": "open_items",
+    "分歧与焦虑": "divergence",
     "分歧与遗留问题": "divergence",
     "分歧": "divergence",
+    "循证数据解读": "evidence",
+    "临床用药建议": "clinical",
+    "专家共识": "consensus",
+    "核心结论与共识": "consensus",
+    "共识": "consensus",
+    "行动计划": "actions",
     "行动项": "actions",
-    "下次会议与跟进安排": "next_meeting",
-    "下次会议": "next_meeting",
 }
 
 
 def _known_header(title: str) -> str | None:
     cleaned = re.sub(r"^#+\s*", "", title).strip()
+    cleaned = re.sub(r"^\*\*(.+?)\*\*$", r"\1", cleaned).strip()
+    cleaned = re.sub(r"^[一二三四五六七八九十]+、\s*", "", cleaned)
     for alias, key in SECTION_ALIASES.items():
         if cleaned == alias or cleaned.startswith(alias):
             return key
@@ -55,13 +54,18 @@ def split_minutes_sections(content: str) -> list[tuple[str, str, list[int]]]:
     sections: list[tuple[str, str, list[int]]] = []
     if not content:
         return sections
-    parts = re.split(r"(?m)^(##+)\s+(.+?)\s*$", content)
-    pending_intro = parts[0].strip()
+    heading_pattern = re.compile(
+        r"(?m)^(?:#{2,6}\s+(.+?)\s*|\*\*([一二三四五六七八九十]+、[^*\n]+?)\*\*\s*)$"
+    )
+    matches = list(heading_pattern.finditer(content))
+    pending_intro = content[: matches[0].start()].strip() if matches else content.strip()
     if pending_intro:
         sections.append(("intro", pending_intro, []))
-    for index in range(1, len(parts) - 1, 3):
-        title = parts[index + 1].strip()
-        body = parts[index + 2].strip()
+    for index, match in enumerate(matches):
+        title = (match.group(1) or match.group(2) or "").strip()
+        body_start = match.end()
+        body_end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+        body = content[body_start:body_end].strip()
         citations = [
             int(value)
             for value in re.findall(r"\[(\d+)\]", body)
@@ -102,6 +106,10 @@ def _line_items(body: str) -> list[str]:
     return lines
 
 
+def _remove_citation_markers(value: str) -> str:
+    return re.sub(r"\s*\[\d+\]", "", value).strip()
+
+
 def _parse_minutes(bundle: AnalysisBundle) -> dict[str, tuple[str, list[int]]]:
     """Map confirmed minutes markdown to canonical section keys."""
 
@@ -118,48 +126,23 @@ def _parse_minutes(bundle: AnalysisBundle) -> dict[str, tuple[str, list[int]]]:
     for key, body, citations in parsed:
         if key in SECTION_HEADERS_MAP and key not in result:
             result[key] = (body, citations)
-    if "summary" not in result and parsed and parsed[0][0] == "intro":
-        result["summary"] = (parsed[0][1], parsed[0][2])
     return result
 
 
 SECTION_HEADERS_MAP = {key: title for key, title in SECTION_HEADERS}
 
 
-def _attendee_viewpoints(bundle: AnalysisBundle) -> tuple[str, list[int]]:
-    by_speaker: dict[str, list[str]] = {}
-    for block in bundle.transcript_blocks:
-        if not block.speaker or not (block.text or "").strip():
-            continue
-        text = _strip_markdown(block.text).strip()
-        if text:
-            by_speaker.setdefault(normalize_speaker_name(block.speaker), []).append(text)
-    if not by_speaker:
-        return "", []
-    lines = [
-        f"**{speaker}**：" + " ".join(parts[:3])
-        for speaker, parts in list(by_speaker.items())[:40]
-    ]
-    return "\n".join(lines), []
-
-
 def compose_export_sections(
     bundle: AnalysisBundle,
     *,
-    selected: list[str] | None,
     show_attendee_names: bool,
-    include_timestamps: bool,
+    include_references: bool,
+    include_citation_markers: bool,
 ) -> list[TextExportSection]:
     """Build the ordered export sections from the confirmed analysis only."""
 
     minutes = _parse_minutes(bundle)
     sources = bundle.sources
-    source_by_index = {source_index(item): item for item in sources}
-    topics: list[str] = []
-    for question in bundle.questions:
-        label = question.content.strip()
-        if label and label not in topics:
-            topics.append(label)
 
     def make(
         key: str,
@@ -180,79 +163,39 @@ def compose_export_sections(
         )
 
     available: dict[str, TextExportSection] = {}
-    if (body := minutes.get("summary")):
-        available["summary"] = make("summary", "会议核心摘要", body[0], body[1])
-    if (body := minutes.get("overview")):
-        available["overview"] = make("overview", "会议基本信息", body[0], body[1])
-    if (body := minutes.get("consensus")):
-        available["consensus"] = make("consensus", "会议共识", body[0], body[1])
-    if (body := minutes.get("decisions")):
-        available["cutoff"] = make("cutoff", "切点问题及分析", body[0], body[1])
-    if (body := minutes.get("open_items")):
-        available["open"] = make("open", "开放性问题及分析", body[0], body[1])
-    if (body := minutes.get("divergence")):
-        available["divergence"] = make("divergence", "分歧与待确认问题", body[0], body[1])
-    if (body := minutes.get("actions")):
-        available["actions"] = make("actions", "行动项", body[0], body[1])
-    viewpoints, viewpoint_citations = _attendee_viewpoints(bundle)
-    if viewpoints:
-        available["viewpoints"] = make(
-            "viewpoints", "参会者观点", viewpoints, viewpoint_citations
-        )
-    if topics:
-        available["topics"] = make("topics", "主要议题", None, [], topics)
+    for key, title in SECTION_HEADERS:
+        if body := minutes.get(key):
+            available[key] = make(key, title, body[0], body[1])
 
-    ordered_keys = [
-        "overview",
-        "summary",
-        "topics",
-        "viewpoints",
-        "consensus",
-        "divergence",
-        "cutoff",
-        "open",
-        "actions",
-        "ai",
-        "sources",
-    ]
-    if selected is not None:
-        allowed = set(selected)
-        ordered_keys = [key for key in ordered_keys if key in allowed]
+    ordered_keys = [key for key, _ in SECTION_HEADERS]
     sections: list[TextExportSection] = []
     for key in ordered_keys:
-        if key == "ai":
-            minutes_body = minutes.get("summary", ("", []))
-            if minutes_body[0]:
-                sections.append(make("ai", "AI 分析结论", minutes_body[0], minutes_body[1]))
-            continue
-        if key == "sources":
-            if not sources:
-                continue
-            sections.append(
-                TextExportSection(
-                    key="sources",
-                    title="引用来源或知识库依据",
-                    content=None,
-                    items=[
-                        f"[{source_index(item)}] {item.get('title', '来源')}："
-                        f"{str(item.get('snippet') or '')[:200]}"
-                        for item in sources
-                    ],
-                    citations=[],
-                )
-            )
-            continue
         section = available.get(key)
         if section is None:
             continue
         sections.append(section)
 
-    if not show_attendee_names:
+    if include_references and sources:
+        sections.append(
+            TextExportSection(
+                key="sources",
+                title="引用来源或知识库依据",
+                content=None,
+                items=[
+                    f"[{source_index(item)}] {item.get('title', '来源')}："
+                    f"{str(item.get('snippet') or '')[:200]}"
+                    for item in sources
+                ],
+                citations=[],
+            )
+        )
+
+    if not include_citation_markers:
         for section in sections:
-            if section.key == "viewpoints" and section.content:
-                section.content = re.sub(
-                    r"\*\*([^*]+)\*\*：", "**参会者**：", section.content
-                )
+            if section.content:
+                section.content = _remove_citation_markers(section.content)
+            section.items = [_remove_citation_markers(item) for item in section.items]
+
     return sections
 
 
@@ -265,16 +208,16 @@ def default_file_name(bundle: AnalysisBundle, fmt: str) -> str:
 def build_text_preview(
     bundle: AnalysisBundle,
     *,
-    selected: list[str] | None,
     show_attendee_names: bool,
-    template: str,
     include_cover: bool,
+    include_references: bool,
+    include_citation_markers: bool,
 ) -> TextPreviewRead:
     sections = compose_export_sections(
         bundle,
-        selected=selected,
         show_attendee_names=show_attendee_names,
-        include_timestamps=False,
+        include_references=include_references,
+        include_citation_markers=include_citation_markers,
     )
     return TextPreviewRead(
         meeting_id=bundle.meeting.id,
@@ -285,7 +228,6 @@ def build_text_preview(
         organizer=bundle.meeting.organizer,
         topic=bundle.meeting.topic,
         analysis_version=bundle.analysis_version,
-        template=template,
         include_cover=include_cover,
         sections=sections,
         sources=[
@@ -314,7 +256,6 @@ def render_text_docx(
     bundle: AnalysisBundle,
     *,
     include_cover: bool,
-    template: str,
     sections: list[TextExportSection],
     include_references: bool,
 ) -> bytes:
@@ -329,6 +270,15 @@ def render_text_docx(
     style = document.styles["Normal"]
     style.font.name = "Microsoft YaHei"
     style.font.size = Pt(10.5)
+    style.paragraph_format.space_after = Pt(4)
+
+    heading_style = document.styles["Heading 1"]
+    heading_style.font.name = "Microsoft YaHei"
+    heading_style.font.size = Pt(14)
+    heading_style.font.bold = True
+    heading_style.paragraph_format.space_before = Pt(12)
+    heading_style.paragraph_format.space_after = Pt(4)
+    heading_style.paragraph_format.keep_with_next = True
 
     if include_cover:
         document.add_heading(bundle.meeting.title, level=0)
@@ -341,7 +291,6 @@ def render_text_docx(
             document.add_paragraph(f"组织方：{bundle.meeting.organizer}")
         if bundle.meeting.location:
             document.add_paragraph(f"地点：{bundle.meeting.location}")
-        document.add_page_break()
 
     body_sections = sections
     if not include_references:
@@ -350,10 +299,6 @@ def render_text_docx(
         document.add_heading(title, level=1)
         for paragraph_text in body.splitlines():
             document.add_paragraph(paragraph_text)
-    if template == "minimal":
-        document.add_paragraph()
-        document.add_paragraph("—— 本纪要由 AI 会议纪要系统生成 ——")
-
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
@@ -363,7 +308,6 @@ def render_text_pdf(
     bundle: AnalysisBundle,
     *,
     include_cover: bool,
-    template: str,
     sections: list[TextExportSection],
     include_references: bool,
 ) -> bytes:
@@ -436,10 +380,6 @@ def render_text_pdf(
             for paragraph in _strip_markdown(section.content).splitlines():
                 if paragraph.strip():
                     story.append(Paragraph(_escape_paragraph(paragraph), base))
-    if template == "minimal":
-        story.append(Spacer(1, 8 * mm))
-        story.append(Paragraph("—— 本纪要由 AI 会议纪要系统生成 ——", meta))
-
     buffer = BytesIO()
     document = SimpleDocTemplate(
         buffer,
@@ -458,23 +398,20 @@ def render_text_file(
     *,
     fmt: str,
     include_cover: bool,
-    template: str,
-    selected: list[str] | None,
     show_attendee_names: bool,
     include_references: bool,
-    include_timestamps: bool,
+    include_citation_markers: bool,
 ) -> tuple[bytes, str]:
     sections = compose_export_sections(
         bundle,
-        selected=selected,
         show_attendee_names=show_attendee_names,
-        include_timestamps=include_timestamps,
+        include_references=include_references,
+        include_citation_markers=include_citation_markers,
     )
     if fmt == "docx":
         content = render_text_docx(
             bundle,
             include_cover=include_cover,
-            template=template,
             sections=sections,
             include_references=include_references,
         )
@@ -482,7 +419,6 @@ def render_text_file(
     content = render_text_pdf(
         bundle,
         include_cover=include_cover,
-        template=template,
         sections=sections,
         include_references=include_references,
     )

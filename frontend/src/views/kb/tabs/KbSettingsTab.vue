@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { kbApi } from '@/api/kb'
 import { useAuthStore } from '@/stores/auth'
 import type { KnowledgeBase } from '@/types/kb'
+import { canAccessSettings } from '@/utils/kb'
 
 const props = defineProps<{ kb: KnowledgeBase }>()
 const emit = defineEmits<{ updated: [] }>()
@@ -12,7 +13,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const saving = ref(false)
 const form = reactive({ name: props.kb.name, description: props.kb.description, status: props.kb.status })
-const canManage = computed(() => ['owner', 'admin'].includes(auth.user?.role || ''))
+const canManage = computed(() => canAccessSettings(auth.user?.role))
 
 async function save() {
   saving.value = true

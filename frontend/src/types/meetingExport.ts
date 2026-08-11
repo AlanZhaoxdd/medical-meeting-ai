@@ -50,7 +50,6 @@ export interface TextPreview {
   organizer: string | null
   topic: string | null
   analysis_version: number
-  template: string
   include_cover: boolean
   sections: TextExportSection[]
   sources: Array<{ index: number; title: string; snippet: string; type: string }>
@@ -60,11 +59,9 @@ export interface TextExportConfig {
   format: 'docx' | 'pdf'
   file_name?: string
   include_cover: boolean
-  template: 'formal' | 'minimal'
-  sections?: string[]
   show_attendee_names: boolean
   include_references: boolean
-  include_timestamps: boolean
+  include_citation_markers: boolean
 }
 
 export interface PptBullet {
@@ -98,7 +95,8 @@ export interface PptOutline {
 
 export interface PptExportConfig {
   file_name?: string
-  theme: 'formal' | 'minimal'
+  /** @deprecated The backend keeps this for historical requests; rendering uses the customer template. */
+  theme?: 'formal' | 'minimal'
   include_charts: boolean
   include_references: boolean
   anonymous_attendees: boolean
@@ -121,6 +119,8 @@ export interface ChartCategory {
   key: string
   label: string
   value: number
+  lower?: number | null
+  upper?: number | null
   percentage?: number | null
   evidence: ChartEvidence[]
 }
@@ -142,7 +142,63 @@ export interface ChartSpec {
     reason?: string | null
     generatedAt: string
   }
+  interpretation?: string | null
   generated_at: string
+  template_id?: string | null
+  template_version?: number | null
+  cutpoint_key?: string | null
+  indicator_mode?: string | null
+  unit?: string | null
+  count_mode?: 'unique_speakers' | 'evidence_count' | null
+  bin_definition: ChartBin[]
+  valid_observation_count: number
+  excluded_observation_count: number
+  excluded_reasons: ChartExcludedObservation[]
+  data_origin?: 'demo' | 'model' | null
+}
+
+export interface ChartBin {
+  key: string
+  label: string
+  lower?: number | null
+  upper?: number | null
+  lower_inclusive?: boolean
+  upper_inclusive?: boolean
+}
+
+export interface ChartExcludedObservation {
+  cutpointKey?: string
+  population?: string
+  value?: number | null
+  rawValue?: string
+  unit?: string
+  speakerName?: string
+  sourceIds?: string[]
+  reason: string
+}
+
+export interface ChartCutpointItem {
+  key: string
+  label: string
+  question?: string
+  chart_title?: string
+  aliases: string[]
+  indicator: string
+  indicator_options?: string[]
+  unit: string
+  unit_aliases: string[]
+  count_mode: 'unique_speakers' | 'evidence_count'
+  bins: ChartBin[]
+}
+
+export interface ChartCutpointTemplate {
+  id: string
+  template_key: string
+  name: string
+  description: string
+  version: number
+  items: ChartCutpointItem[]
+  created_at: string
 }
 
 export type ExportRecordList = {
@@ -205,6 +261,8 @@ export function normalizeChartSpec(raw: unknown): ChartSpec | null {
             key: String(category.key ?? ''),
             label: String(category.label ?? ''),
             value: Number(category.value ?? 0) || 0,
+            lower: typeof category.lower === 'number' ? category.lower : null,
+            upper: typeof category.upper === 'number' ? category.upper : null,
             percentage: typeof category.percentage === 'number' ? category.percentage : null,
             evidence: Array.isArray(category.evidence)
               ? (category.evidence as ChartEvidence[]).map((evidence) => ({
@@ -223,7 +281,45 @@ export function normalizeChartSpec(raw: unknown): ChartSpec | null {
       reason: typeof (value.validation as Record<string, unknown>)?.reason === 'string' ? String((value.validation as Record<string, unknown>)?.reason) : null,
       generatedAt: String((value.validation as Record<string, unknown>)?.generatedAt ?? ''),
     },
+    interpretation: typeof value.interpretation === 'string' ? value.interpretation : null,
     generated_at: String(value.generated_at ?? ''),
+    template_id: typeof value.template_id === 'string' ? value.template_id : null,
+    template_version: typeof value.template_version === 'number' ? value.template_version : null,
+    cutpoint_key: typeof value.cutpoint_key === 'string' ? value.cutpoint_key : null,
+    indicator_mode: typeof value.indicator_mode === 'string' ? value.indicator_mode : null,
+    unit: typeof value.unit === 'string' ? value.unit : null,
+    count_mode: value.count_mode === 'evidence_count' ? 'evidence_count' : value.count_mode === 'unique_speakers' ? 'unique_speakers' : null,
+    bin_definition: Array.isArray(value.bin_definition)
+      ? value.bin_definition.map((item) => {
+          const bin = (item ?? {}) as Record<string, unknown>
+          return {
+            key: String(bin.key ?? ''),
+            label: String(bin.label ?? ''),
+            lower: typeof bin.lower === 'number' ? bin.lower : null,
+            upper: typeof bin.upper === 'number' ? bin.upper : null,
+            lower_inclusive: bin.lower_inclusive !== false,
+            upper_inclusive: bin.upper_inclusive === true,
+          }
+        })
+      : [],
+    valid_observation_count: Number(value.valid_observation_count ?? 0) || 0,
+    excluded_observation_count: Number(value.excluded_observation_count ?? 0) || 0,
+    excluded_reasons: Array.isArray(value.excluded_reasons)
+      ? value.excluded_reasons.map((item) => {
+          const reason = (item ?? {}) as Record<string, unknown>
+          return {
+            cutpointKey: typeof reason.cutpointKey === 'string' ? reason.cutpointKey : undefined,
+            population: typeof reason.population === 'string' ? reason.population : undefined,
+            value: typeof reason.value === 'number' ? reason.value : null,
+            rawValue: typeof reason.rawValue === 'string' ? reason.rawValue : undefined,
+            unit: typeof reason.unit === 'string' ? reason.unit : undefined,
+            speakerName: typeof reason.speakerName === 'string' ? reason.speakerName : undefined,
+            sourceIds: Array.isArray(reason.sourceIds) ? reason.sourceIds.map(String) : [],
+            reason: String(reason.reason ?? '未说明原因'),
+          }
+        })
+      : [],
+    data_origin: value.data_origin === 'demo' ? 'demo' : value.data_origin === 'model' ? 'model' : null,
   }
 }
 

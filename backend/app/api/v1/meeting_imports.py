@@ -1063,6 +1063,70 @@ async def get_review(
     return await _serialize_review(session, item)
 
 
+@router.post("/meeting-imports/{import_id}/reopen", response_model=ReviewRead)
+async def reopen_review(
+    import_id: UUID,
+    session: SessionDependency,
+    current: EditorDependency,
+) -> ReviewRead:
+    """Open the existing review editor without creating a second meeting."""
+    item = await _get_import(session, current, import_id, for_update=True)
+    if item.status is MeetingImportStatus.READY_FOR_REVIEW:
+        return await _serialize_review(session, item)
+    if item.status is not MeetingImportStatus.CONFIRMED or not item.meeting_id:
+        raise ConflictError("import_not_reopenable", "当前导入记录暂时不能进入编辑")
+
+    document = await session.scalar(
+        select(Document).where(Document.id == item.document_id).with_for_update()
+    )
+    if document is None:
+        raise NotFoundError("文档", "document_not_found")
+    confirmed_revision_id = item.confirmed_revision_id or document.active_transcript_revision_id
+    if confirmed_revision_id is None:
+        raise ConflictError("review_not_ready", "当前会议没有可编辑的纪要版本")
+    confirmed_revision = await session.scalar(
+        select(TranscriptRevision).where(TranscriptRevision.id == confirmed_revision_id)
+    )
+    if confirmed_revision is None:
+        raise NotFoundError("修订版本", "revision_not_found")
+    draft = await session.scalar(
+        select(TranscriptRevision)
+        .where(
+            TranscriptRevision.document_id == item.document_id,
+            TranscriptRevision.status == TranscriptRevisionStatus.DRAFT,
+        )
+        .order_by(TranscriptRevision.version.desc())
+    )
+    if draft is None:
+        await _new_revision(
+            session,
+            confirmed_revision,
+            await _revision_blocks(session, confirmed_revision.id),
+            current.user_id,
+        )
+    draft = await _current_draft(session, item, for_update=True)
+    vector_job, vector_job_created = await ensure_vectorization_job(
+        session, item, draft, document
+    )
+    if vector_job.status in {"FAILED", "STALE"}:
+        vector_job.status = "QUEUED"
+        vector_job.current_node = "build_chunks"
+        vector_job.progress = 0
+        vector_job.error_code = None
+        vector_job.error_message = None
+    item.status = MeetingImportStatus.READY_FOR_REVIEW
+    document.vector_sync_status = "PENDING"
+    await session.commit()
+    if vector_job.status == "QUEUED" and vector_job_created:
+        try:
+            from app.worker.celery_app import celery_app
+
+            celery_app.send_task("app.worker.tasks.run_ingestion", args=[vector_job.job_id])
+        except Exception:
+            pass
+    return await _serialize_review(session, item)
+
+
 @router.get(
     "/meeting-imports/{import_id}/vectorization",
     response_model=VectorizationReadResponse,
@@ -1662,21 +1726,37 @@ async def confirm_import(
         )
     }
     discussion_topics = str(values.get("discussion_topics") or "").strip() or None
-    meeting = Meeting(
-        organization_id=current.organization_id,
-        knowledge_base_id=item.knowledge_base_id,
-        title=str(values["title"]),
-        starts_at=values["starts_at"],
-        ends_at=values["ends_at"],
-        location=values.get("location"),
-        online_url=values.get("online_url"),
-        organizer=values.get("organizer"),
-        topic=discussion_topics[:255] if discussion_topics else values.get("topic"),
-        description=values.get("meeting_purpose") or values.get("description"),
-        meeting_info=meeting_info,
-    )
-    session.add(meeting)
-    await session.flush()
+    if item.meeting_id:
+        meeting = await session.scalar(
+            select(Meeting).where(Meeting.id == item.meeting_id).with_for_update()
+        )
+        if meeting is None:
+            raise NotFoundError("会议", "meeting_not_found")
+        meeting.title = str(values["title"])
+        meeting.starts_at = values["starts_at"]
+        meeting.ends_at = values["ends_at"]
+        meeting.location = values.get("location")
+        meeting.online_url = values.get("online_url")
+        meeting.organizer = values.get("organizer")
+        meeting.topic = discussion_topics[:255] if discussion_topics else values.get("topic")
+        meeting.description = values.get("meeting_purpose") or values.get("description")
+        meeting.meeting_info = meeting_info
+    else:
+        meeting = Meeting(
+            organization_id=current.organization_id,
+            knowledge_base_id=item.knowledge_base_id,
+            title=str(values["title"]),
+            starts_at=values["starts_at"],
+            ends_at=values["ends_at"],
+            location=values.get("location"),
+            online_url=values.get("online_url"),
+            organizer=values.get("organizer"),
+            topic=discussion_topics[:255] if discussion_topics else values.get("topic"),
+            description=values.get("meeting_purpose") or values.get("description"),
+            meeting_info=meeting_info,
+        )
+        session.add(meeting)
+        await session.flush()
     revision.status = TranscriptRevisionStatus.CONFIRMED
     revision.confirmed_by = current.user_id
     revision.confirmed_at = datetime.now(timezone.utc)
@@ -1691,7 +1771,23 @@ async def confirm_import(
     item.confirmed_revision_id = revision.id
     item.confirmation_idempotency_key = key
     await session.flush()
-    job = _enqueue_confirmed_job(session, item, document)
+    job = await session.scalar(
+        select(IngestionJob)
+        .where(IngestionJob.job_id == f"meeting-import-{item.id}")
+        .with_for_update()
+    )
+    if job is None:
+        job = _enqueue_confirmed_job(session, item, document)
+    else:
+        job.status = "QUEUED"
+        job.current_node = "extract_knowledge"
+        job.progress = 0
+        job.error_code = None
+        job.error_message = None
+        job.result_summary = {
+            "source": "confirmed_transcript_revision",
+            "revision_id": str(document.active_transcript_revision_id),
+        }
     # The import idempotency lock above guarantees one task for this revision;
     # the database unique constraint is the final race-safe guard.
     ai_task = AiTask(

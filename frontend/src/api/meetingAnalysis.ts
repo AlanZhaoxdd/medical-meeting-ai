@@ -175,6 +175,10 @@ export function readChatResponse(data: unknown): MeetingChatResponse {
     status: value.status === 'INSUFFICIENT_CONTEXT' || value.status === 'FAILED' ? value.status : 'COMPLETED',
     sources: normalizeAnalysisSources(rawSources),
     suggestedQuestions: Array.isArray(value.suggestedQuestions) ? value.suggestedQuestions.map(String) : Array.isArray(value.suggested_questions) ? value.suggested_questions.map(String) : undefined,
+    route:
+      value.route === 'MEETING_GROUNDED' || value.route === 'GENERAL_LLM' || value.route === 'REFUSED'
+        ? value.route
+        : undefined,
   }
 }
 

@@ -258,6 +258,26 @@ def test_retrieval_plan_entities_must_be_grounded_in_confirmed_minutes() -> None
     raise AssertionError("ungrounded entities must be rejected")
 
 
+def test_retrieval_plan_accepts_study_names_with_version_numbers() -> None:
+    plan = RetrievalPlan.model_validate(
+        {
+            "study_names": ["ONWARDS 1", "ONWARDS 2", "ONWARDS 3", "ONWARDS 4", "ONWARDS 5"],
+            "medical_entities": ["2型糖尿病"],
+            "drug_names": ["依柯胰岛素"],
+        }
+    )
+    validate_plan_grounding(
+        plan,
+        {
+            "confirmed_minutes": (
+                "ONWARDS 1、3、5研究证实在未使用过胰岛素的2型糖尿病患者中，"
+                "依柯胰岛素相较于基础胰岛素日制剂，HbA1c降幅上更优。"
+                "ONWARDS 2、4研究证实在已使用胰岛素的患者中，降幅上更优或相似。"
+            )
+        },
+    )
+
+
 def test_persisted_counts_require_both_question_types() -> None:
     assert has_required_question_types(1, 1)
     assert not has_required_question_types(1, 0)

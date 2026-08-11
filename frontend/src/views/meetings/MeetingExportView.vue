@@ -48,8 +48,8 @@ const exportTypes: Array<{
   icon: typeof Document
 }> = [
   { key: 'text', title: '文字纪要', description: 'DOCX / PDF 排版导出，与已确认 AI 纪要一致', icon: Document },
-  { key: 'ppt', title: '汇报 PPT', description: '6～8 页可编辑 PPTX，先预览大纲再生成', icon: Files },
   { key: 'chart', title: '数据图表', description: '基于会议证据的条形图与立场饼图', icon: Histogram },
+  { key: 'ppt', title: '汇报 PPT', description: '6～8 页可编辑 PPTX，先预览大纲再生成', icon: Files },
 ]
 
 function stopPolling() {

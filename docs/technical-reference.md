@@ -75,8 +75,8 @@
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | 第一阶段（当前） | 知识入库流水线、纪要约校、证据检索、问题生成核验、评测基准 | 已实现 |
-| 第二阶段 | 最终问答生成、会议资料分析中心 | 占位（`AnalysisPlaceholderView`、`submit_analysis` 中的 TODO） |
-| 第三阶段 | 实时 ASR / 音频流、PPT/图表/结构化纪要生成、GraphRAG | 未开发 |
+| 第二阶段 | 最终问答生成、会议资料分析中心、切点驱动单场图表 | 部分实现；图表支持组织级11项模板、互斥区间和证据回溯 |
+| 第三阶段 | 实时 ASR / 音频流、跨会议图表合并、GraphRAG | 未开发 |
 | 长期 | 任意自定义 Schema/Prompt 编辑器、组织公共 KB、跨 KB 检索 | 未开发 |
 
 ---
@@ -145,7 +145,7 @@
 | `frontend` | node 构建 → nginx:1.28-alpine | 5173→80 | SPA 静态托管 + 反向代理 |
 | `bge-models` | model-service 镜像（docker-compose.models.yml / .gpu.yml） | 8100 | BGE-M3 嵌入 + 重排推理 |
 
-GPU 模式通过 `docker compose -f docker-compose.yml -f docker-compose.models.yml -f docker-compose.gpu.yml up` 启动：`docker-compose.models.yml` 提供模型服务公共定义（CPU 默认），`docker-compose.gpu.yml` overlay 将 `BGE_DEVICE=cuda`、申请 1 张 NVIDIA GPU，并用 CUDA 版 torch 重新构建模型服务镜像（`TORCH_INDEX_URL` 默认 cu126，可用环境变量覆盖）。
+模型服务默认按 GPU 构建/运行：`docker-compose.models.yml` 默认使用 CUDA 版 torch（`TORCH_INDEX_URL` 默认 cu126）并设置 `BGE_DEVICE=cuda`，基础启动命令即为 GPU 推理；`docker-compose.gpu.yml` overlay 可显式申请 1 张 NVIDIA GPU（`deploy.resources`）。无 GPU 主机回退 CPU：`TORCH_INDEX_URL= BGE_DEVICE=cpu docker compose -f docker-compose.yml -f docker-compose.models.yml up --build`。
 
 ### 2.4 端到端主流程（一句话）
 
@@ -1344,9 +1344,9 @@ BGE-M3 的 dense 捕捉语义、sparse（词法权重）捕捉精确词匹配（
 
 **45. Workflow 与 Agent 怎么选？本项目为什么用 Workflow？**
 
-一句话记忆点：**确定性流程用 Workflow，开放任务才用 Agent；本项目是前者**。
+一句话记忆点：**确定性流程用 Workflow，开放任务用受限 Agent；本项目两者并存，Agent 是受限的**。
 
-展开：Workflow 节点预先编排，可预测、可控制、可审计（本项目的入库图与问题生成图）；Agent 由 LLM 自主规划调工具，灵活但不可控、成本高、易跑偏。选型：上传→解析→审核→发布是确定性流程，必须 Workflow；跨源调研等开放任务才考虑 Agent。生产常见形态是"外层 Workflow 编排 + 受限工具调用"，而不是全自主 Agent。**面试结论：Agent 是能力不是目标，可控性和审计性优先。**
+展开：Workflow 节点预先编排，可预测、可控制、可审计（本项目的入库图与问题生成图）；Agent 由 LLM 自主规划调工具，灵活但不可控、成本高、易跑偏。选型：上传→解析→审核→发布是确定性流程，必须 Workflow；会议智能问答属于开放任务，但采用**受限 Agent**形态——一个 LLM 路由节点判断问题类型，再分发到固定工具（Grounded RAG 检索、通用 LLM 直接回答、拒绝），路由结果随问答落库审计，模型失败时回退纯 RAG。跨源调研等更大范围的开放 Agent 仍属架构预留。生产常见形态是"外层 Workflow 编排 + 受限工具调用"，而不是全自主 Agent。**面试结论：Agent 是能力不是目标，可控性和审计性优先。**
 
 **46. LangGraph State 膨胀/内存溢出怎么避免？**
 
@@ -1364,7 +1364,7 @@ BGE-M3 的 dense 捕捉语义、sparse（词法权重）捕捉精确词匹配（
 
 一句话记忆点：**MCP 是"能干什么"的标准化工具协议，Skill 是"怎么干"的指令包**。
 
-展开：MCP（Model Context Protocol）标准化"Agent ↔ 工具/资源"的接入，服务端暴露工具、客户端调用，解决工具生态碎片化；Skill 是给模型/Agent 的行为指令与流程知识，教它按什么步骤做事。两者可组合：Skill 指导流程，MCP 提供执行能力。本项目暂无 Agent，属"架构预留"，面试要标注"了解原理、未接入"。
+展开：MCP（Model Context Protocol）标准化"Agent ↔ 工具/资源"的接入，服务端暴露工具、客户端调用，解决工具生态碎片化；Skill 是给模型/Agent 的行为指令与流程知识，教它按什么步骤做事。两者可组合：Skill 指导流程，MCP 提供执行能力。本项目的会议问答已接入受限 Agent（LLM 路由 + 固定工具），跨源调研等开放 Agent 与 MCP 工具生态仍属架构预留，面试要标注"了解原理、受限场景已落地、全开放未接入"。
 
 ### 25.7 工程与可靠性
 
@@ -1491,7 +1491,7 @@ BGE-M3 的 dense 捕捉语义、sparse（词法权重）捕捉精确词匹配（
 
 - **实时 ASR / 音频流**：当前只支持静态文件（PDF/DOCX/PPTX/TXT/MD/逐字稿 JSON）；
 - **最终问答生成**（对已确认问题的 AI 回答 + 证据支撑）；
-- **PPT / 图表 / 结构化纪要生成**；
+- **PPT / 结构化纪要生成**；单场切点图表已实现，跨会议图表合并未实现；
 - **GraphRAG**（多跳关系推理检索）；
 - **任意自定义 Schema / Prompt 编辑器**：当前提取字段为白名单（`ALLOWED_TEMPLATE_FIELDS` 8 类）；
 - **组织公共 KB 与跨 KB 检索**：当前检索严格限定单 KB；

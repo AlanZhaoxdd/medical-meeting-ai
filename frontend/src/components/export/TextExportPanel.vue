@@ -18,37 +18,18 @@ const emit = defineEmits<{ refreshRecords: [] }>()
 
 const format = ref<'docx' | 'pdf'>('docx')
 const file_name = ref('')
-const template = ref<'formal' | 'minimal'>('formal')
 const include_cover = ref(true)
 const show_attendee_names = ref(true)
 const include_references = ref(true)
-const include_timestamps = ref(false)
-const selectedSections = ref<string[]>([
-  'overview',
-  'summary',
-  'topics',
-  'viewpoints',
-  'consensus',
-  'divergence',
-  'cutoff',
-  'open',
-  'actions',
-  'ai',
-  'sources',
-])
+const include_citation_markers = ref(true)
 
 const sectionOptions: Array<{ key: string; label: string }> = [
-  { key: 'overview', label: '会议基本信息' },
-  { key: 'summary', label: '会议核心摘要' },
-  { key: 'topics', label: '主要议题' },
-  { key: 'viewpoints', label: '参会者观点' },
-  { key: 'consensus', label: '会议共识' },
-  { key: 'divergence', label: '分歧与待确认问题' },
-  { key: 'cutoff', label: '切点问题及分析' },
-  { key: 'open', label: '开放性问题及分析' },
-  { key: 'actions', label: '行动项' },
-  { key: 'ai', label: 'AI 分析结论' },
-  { key: 'sources', label: '引用来源或知识库依据' },
+  { key: 'overview', label: '会议概述' },
+  { key: 'divergence', label: '分歧与焦虑' },
+  { key: 'evidence', label: '循证数据解读' },
+  { key: 'clinical', label: '临床用药建议' },
+  { key: 'consensus', label: '专家共识' },
+  { key: 'actions', label: '行动计划' },
 ]
 
 const preview = ref<TextPreview | null>(null)
@@ -63,11 +44,9 @@ const config = computed<TextExportConfig>(() => ({
   format: format.value,
   file_name: file_name.value.trim() || undefined,
   include_cover: include_cover.value,
-  template: template.value,
-  sections: selectedSections.value.length ? [...selectedSections.value] : undefined,
   show_attendee_names: show_attendee_names.value,
   include_references: include_references.value,
-  include_timestamps: include_timestamps.value,
+  include_citation_markers: include_citation_markers.value,
 }))
 
 async function loadPreview() {
@@ -179,12 +158,6 @@ onBeforeUnmount(stopPolling)
               <el-radio-button value="pdf">PDF</el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="模板">
-            <el-radio-group v-model="template">
-              <el-radio-button value="formal">正式版</el-radio-button>
-              <el-radio-button value="minimal">简洁版</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
           <el-form-item label="导出文件名称">
             <el-input v-model="file_name" placeholder="留空则自动生成" clearable />
           </el-form-item>
@@ -194,15 +167,15 @@ onBeforeUnmount(stopPolling)
           <el-checkbox v-model="include_cover">包含封面</el-checkbox>
           <el-checkbox v-model="show_attendee_names">显示参会者姓名</el-checkbox>
           <el-checkbox v-model="include_references">包含知识库引用</el-checkbox>
-          <el-checkbox v-model="include_timestamps">包含时间戳</el-checkbox>
+          <el-checkbox v-model="include_citation_markers">包含正文引用标记</el-checkbox>
         </div>
 
-        <el-form-item label="导出章节（无数据的章节会自动隐藏）">
-          <el-checkbox-group v-model="selectedSections" class="section-checks">
-            <el-checkbox v-for="option in sectionOptions" :key="option.key" :value="option.key">
+        <el-form-item label="导出章节（固定为会议纪要的 6 个章节）">
+          <div class="section-checks">
+            <el-tag v-for="option in sectionOptions" :key="option.key" effect="plain">
               {{ option.label }}
-            </el-checkbox>
-          </el-checkbox-group>
+            </el-tag>
+          </div>
         </el-form-item>
 
         <div class="form-actions">
@@ -297,7 +270,7 @@ onBeforeUnmount(stopPolling)
 .preview-note { color: #8a99a0; font-size: 12px; }
 .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .toggle-row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 18px; }
-.section-checks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; width: 100%; }
+.section-checks { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
 .form-actions { display: flex; gap: 10px; }
 .progress-alert { margin-top: 14px; }
 .progress-row { display: grid; gap: 6px; }

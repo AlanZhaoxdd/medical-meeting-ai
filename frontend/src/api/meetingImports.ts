@@ -128,6 +128,9 @@ export const meetingImportsApi = {
   review(importId: string) {
     return http.get<unknown>(`/api/v1/meeting-imports/${importId}/review`).then((response) => normalizeReview(response.data))
   },
+  reopen(importId: string) {
+    return http.post<unknown>(`/api/v1/meeting-imports/${importId}/reopen`).then((response) => normalizeReview(response.data))
+  },
   vectorization(importId: string) {
     return http.get<unknown>(`/api/v1/meeting-imports/${importId}/vectorization`).then((response) => normalizeVectorization(response.data))
   },

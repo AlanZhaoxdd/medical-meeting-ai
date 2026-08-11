@@ -69,6 +69,7 @@ class AnalysisRunRead(BaseModel):
 
 ChatScope = Literal["CURRENT_MEETING", "MEETING_AND_KB"]
 ChatStatus = Literal["COMPLETED", "INSUFFICIENT_CONTEXT", "FAILED"]
+ChatRoute = Literal["MEETING_GROUNDED", "GENERAL_LLM", "REFUSED"]
 
 
 def _to_camel(value: str) -> str:
@@ -116,3 +117,6 @@ class MeetingChatResponse(BaseModel):
     status: ChatStatus
     sources: list[MeetingChatSource] = Field(default_factory=list, max_length=60)
     suggested_questions: list[str] = Field(default_factory=list, max_length=5)
+    # Which agent route answered this turn: grounded RAG over the meeting/KB,
+    # a direct general-knowledge LLM answer, or an explicit refusal.
+    route: Optional[ChatRoute] = None

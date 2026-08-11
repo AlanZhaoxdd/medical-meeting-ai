@@ -381,6 +381,7 @@ export const mockChatTransport: MeetingChatTransport = {
         answer: insufficientContextNotice,
         status: 'INSUFFICIENT_CONTEXT',
         sources: [],
+        route: 'MEETING_GROUNDED',
       }
       handlers.onDone?.(response)
       return
@@ -392,6 +393,7 @@ export const mockChatTransport: MeetingChatTransport = {
         answer: plan.answer,
         status: 'INSUFFICIENT_CONTEXT',
         sources: [],
+        route: 'MEETING_GROUNDED',
       }
       handlers.onDone?.(response)
       return
@@ -406,6 +408,7 @@ export const mockChatTransport: MeetingChatTransport = {
       status: 'COMPLETED',
       sources: plan.sources,
       suggestedQuestions: [],
+      route: 'MEETING_GROUNDED',
     })
   },
 }

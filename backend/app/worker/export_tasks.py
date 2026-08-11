@@ -8,18 +8,20 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.models.export import (
+    ChartSelection,
     ExportFileFormat,
     ExportRecord,
     ExportStatus,
     ExportType,
     PptOutline,
 )
-from app.schemas.export import PptDeckSpec
+from app.schemas.export import PptDeckSpec, PptSlideOut
 from app.services.export_bundle import load_analysis_bundle
 from app.services.export_chart_service import (
     delete_chart_specs_for_plan,
+    ensure_default_cutpoint_template,
     list_chart_specs,
-    plan_charts,
+    plan_numeric_chart,
 )
 from app.services.export_model_clients import ChartPlanModelClient, PptOutlineModelClient
 from app.services.export_ppt import render_ppt_bytes
@@ -106,11 +108,9 @@ async def _run_text_export(
         bundle,
         fmt=fmt,
         include_cover=bool(config.get("include_cover", True)),
-        template=config.get("template", "formal"),
-        selected=config.get("sections"),
         show_attendee_names=bool(config.get("show_attendee_names", True)),
         include_references=bool(config.get("include_references", True)),
-        include_timestamps=bool(config.get("include_timestamps", False)),
+        include_citation_markers=bool(config.get("include_citation_markers", True)),
     )
     file_name = str(config.get("file_name") or default_file_name(bundle, fmt))
     object_key = f"exports/{record.meeting_id}/{record.id}.{fmt}"
@@ -167,8 +167,15 @@ async def _run_ppt_export(
         )
 
     chart_images: dict[str, bytes] = {}
+    chart_interpretations: dict[str, str] = {}
+    chart_data: dict[str, dict[str, object]] = {}
     if config.get("include_charts", True):
         async with factory() as session:
+            await ensure_default_cutpoint_template(
+                session,
+                organization_id=record.organization_id,
+            )
+            await session.commit()
             specs = await list_chart_specs(
                 session,
                 meeting_id=record.meeting_id,
@@ -176,22 +183,75 @@ async def _run_ppt_export(
             )
         for spec in specs:
             if spec.valid and spec.spec:
-                chart_images[str(spec.id)] = render_chart_png(dict(spec.spec))
-    # LLM outlines reference chart ids that may not match persisted ChartSpec
-    # ids. Deterministically inject one valid chart per slide when the outline
-    # has chartIds, or a single default chart when no chart id matches.
+                data = dict(spec.spec)
+                chart_id = str(spec.id)
+                chart_data[chart_id] = data
+                chart_images[chart_id] = render_chart_png(data)
+                interpretation = data.get("interpretation")
+                if interpretation:
+                    chart_interpretations[chart_id] = str(interpretation)
+    preferred_ids: list[str] = []
+    async with factory() as session:
+        selection = await session.scalar(
+            select(ChartSelection).where(
+                ChartSelection.meeting_id == record.meeting_id,
+                ChartSelection.analysis_version == record.analysis_version,
+            )
+        )
+        if selection is not None:
+            preferred_ids = [str(value) for value in (selection.chart_ids or [])]
+    preferred = [chart_id for chart_id in preferred_ids if chart_id in chart_images]
     default_chart = next(iter(chart_images.values()), None)
     slides = deck.slides
-    for slide in slides:
-        is_chart_slide = slide.type == "charts"
-        wanted = [str(chart_id) for chart_id in (slide.chartIds or [])]
-        if wanted:
-            resolved = [chart_id for chart_id in wanted if chart_id in chart_images]
-            if not resolved and default_chart is not None:
-                resolved = [next(iter(chart_images.keys()))]
-            slide.chartIds = resolved
-        elif default_chart is not None and is_chart_slide:
-            slide.chartIds = [next(iter(chart_images.keys()))]
+    if preferred:
+        # Every selected chart gets its own 数据图表 slide. Reuse existing
+        # charts slides from the LLM outline, otherwise inject new slides
+        # (before 引用来源 when present) so the selection is always visible.
+        chart_slide_indexes = [
+            index
+            for index, slide in enumerate(slides)
+            if str(slide.type or "") == "charts"
+        ]
+        insert_at = next(
+            (
+                index
+                for index, slide in enumerate(slides)
+                if str(slide.type or "") == "sources"
+            ),
+            len(slides),
+        )
+        for offset, chart_id in enumerate(preferred[:6]):
+            if offset < len(chart_slide_indexes):
+                slides[chart_slide_indexes[offset]].chartIds = [chart_id]
+            else:
+                slides.insert(
+                    insert_at,
+                    PptSlideOut(
+                        pageNumber=insert_at + 1,
+                        type="charts",
+                        title="数据图表",
+                        bullets=[],
+                        chartIds=[chart_id],
+                    ),
+                )
+                insert_at += 1
+        for index, slide in enumerate(slides, start=1):
+            slide.pageNumber = index
+    else:
+        # LLM outlines reference chart ids that may not match persisted
+        # ChartSpec ids. Deterministically inject one valid chart per slide
+        # when the outline has chartIds, or a single default chart when no
+        # chart id matches.
+        for slide in slides:
+            is_chart_slide = str(slide.type or "") == "charts"
+            wanted = [str(chart_id) for chart_id in (slide.chartIds or [])]
+            if wanted:
+                resolved = [chart_id for chart_id in wanted if chart_id in chart_images]
+                if not resolved and default_chart is not None:
+                    resolved = [next(iter(chart_images.keys()))]
+                slide.chartIds = resolved
+            elif default_chart is not None and is_chart_slide:
+                slide.chartIds = [next(iter(chart_images.keys()))]
 
     content = render_ppt_bytes(
         bundle,
@@ -200,6 +260,10 @@ async def _run_ppt_export(
         include_references=config.get("include_references", True),
         anonymous_attendees=config.get("anonymous_attendees", False),
         chart_images=chart_images,
+        chart_interpretations=chart_interpretations,
+        chart_data=chart_data,
+        report_unit=str(config.get("report_unit") or "").strip() or None,
+        presenter=str(config.get("presenter") or "").strip() or None,
     )
     file_name = str(config.get("file_name") or f"{bundle.meeting.title}-会议汇报.pptx")
     object_key = f"exports/{record.meeting_id}/{record.id}.pptx"
@@ -320,15 +384,17 @@ async def _run_chart_plan(
     bundle = bundle if isinstance(bundle, AnalysisBundle) else bundle
     config = record.config or {}
     chart_type = str(config.get("chart_type") or "bar")
-    target_id = config.get("target_question_id")
-    metric = str(config.get("metric") or "independent_speakers")
+    template_id = config.get("template_id")
+    resolved_template_id = UUID(template_id) if template_id else None
+    cutpoint_key = config.get("cutpoint_key")
+    prepared_chart = bool(config.get("prepared_chart", True))
     async with factory() as session:
         await update_export_progress(
             session,
             export_id=record.id,
             stage="analyzing",
             progress=35,
-            message="AI 正在识别可统计的主题、证据和立场",
+            message="AI 正在抽取医学数值、临床人群和原文证据",
         )
     async with factory() as session:
         await delete_chart_specs_for_plan(
@@ -336,14 +402,22 @@ async def _run_chart_plan(
             meeting_id=record.meeting_id,
             analysis_version=record.analysis_version,
             chart_type=chart_type,
-            target_id=UUID(target_id) if target_id else None,
+            target_id=None,
+            template_id=resolved_template_id,
+            template_version=config.get("template_version"),
         )
-        specs = await plan_charts(
+        specs = await plan_numeric_chart(
             session,
             bundle=bundle,
             chart_type=chart_type,
-            target_question_id=UUID(target_id) if target_id else None,
-            metric=metric,
+            organization_id=record.organization_id,
+            template_id=resolved_template_id,
+            template_version=config.get("template_version"),
+            cutpoint_key=None if prepared_chart else cutpoint_key,
+            indicator_mode=config.get("indicator_mode"),
+            count_mode=config.get("count_mode"),
+            title=config.get("title"),
+            prepared_chart=prepared_chart,
             model_client=ChartPlanModelClient(),
         )
         await session.commit()

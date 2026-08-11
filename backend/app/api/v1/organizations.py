@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthContext, require_role
+from app.core.auth import AuthContext, require_exact_role
 from app.core.exceptions import AppException, ConflictError, NotFoundError
 from app.db.session import get_session
 from app.models.kb import OrganizationMembership, User
@@ -17,7 +17,7 @@ from app.services.audit import record_audit
 
 router = APIRouter(prefix="/organizations/current/members", tags=["组织成员"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
-AdminDependency = Annotated[AuthContext, Depends(require_role(Role.ADMIN))]
+AdminDependency = Annotated[AuthContext, Depends(require_exact_role(Role.ADMIN))]
 
 
 def serialize_member(user: User, membership: OrganizationMembership) -> MemberRead:

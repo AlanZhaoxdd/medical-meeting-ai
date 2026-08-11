@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 from urllib.parse import quote
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Body, Depends, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,8 @@ from app.core.auth import CurrentUserDependency
 from app.core.exceptions import ConflictError, NotFoundError
 from app.db.session import get_session
 from app.models.export import (
+    ChartCutpointTemplate,
+    ChartCutpointTemplateVersion,
     ExportFileFormat,
     ExportRecord,
     ExportStatus,
@@ -20,6 +22,12 @@ from app.models.export import (
 )
 from app.models.meeting import Meeting
 from app.schemas.export import (
+    ChartCutpointTemplateCreate,
+    ChartCutpointTemplateRead,
+    ChartCutpointTemplateVersionCreate,
+    ChartPlanCreate,
+    ChartSelectionRead,
+    ChartSelectionUpdate,
     ChartSpecRead,
     ExportRecordListRead,
     ExportRecordRead,
@@ -33,7 +41,10 @@ from app.schemas.export import (
 from app.services.export_bundle import load_analysis_bundle
 from app.services.export_chart_service import (
     chart_spec_to_read,
+    ensure_default_cutpoint_template,
+    get_chart_selection,
     list_chart_specs,
+    save_chart_selection,
 )
 from app.services.export_charts import render_chart_png, render_chart_svg
 from app.services.export_model_clients import PptOutlineModelClient
@@ -46,9 +57,75 @@ from app.services.export_service import (
 )
 from app.services.export_text import build_text_preview, default_file_name
 from app.services.storage import ObjectStorage
+from app.services.chart_cutpoints import validate_template_items
 
 router = APIRouter(tags=["会议成果导出"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
+
+
+def _template_read(template: ChartCutpointTemplate, version: ChartCutpointTemplateVersion) -> ChartCutpointTemplateRead:
+    return ChartCutpointTemplateRead(id=template.id, template_key=template.template_key, name=template.name, description=template.description, version=version.version, items=version.items or [], created_at=version.created_at)
+
+
+@router.get("/chart-cutpoint-templates", response_model=list[ChartCutpointTemplateRead])
+async def list_chart_cutpoint_templates(session: SessionDependency, current: CurrentUserDependency) -> list[ChartCutpointTemplateRead]:
+    await ensure_default_cutpoint_template(session, organization_id=current.organization_id, created_by=current.user_id)
+    await session.commit()
+    templates = list(
+        (
+            await session.scalars(
+                select(ChartCutpointTemplate).where(
+                    ChartCutpointTemplate.organization_id == current.organization_id
+                ).order_by(ChartCutpointTemplate.created_at.asc())
+            )
+        ).all()
+    )
+    result: list[ChartCutpointTemplateRead] = []
+    for template in templates:
+        version = await session.scalar(
+            select(ChartCutpointTemplateVersion).where(
+                ChartCutpointTemplateVersion.template_id == template.id,
+                ChartCutpointTemplateVersion.version == template.latest_version,
+            )
+        )
+        if version is not None:
+            result.append(_template_read(template, version))
+    return result
+
+
+@router.post("/chart-cutpoint-templates", response_model=ChartCutpointTemplateRead)
+async def create_chart_cutpoint_template(payload: ChartCutpointTemplateCreate, session: SessionDependency, current: CurrentUserDependency) -> ChartCutpointTemplateRead:
+    items = [item.model_dump(mode="json") for item in payload.items]
+    try:
+        validate_template_items(items)
+    except ValueError as exc:
+        raise ConflictError("chart_template_invalid", str(exc)) from exc
+    template = ChartCutpointTemplate(organization_id=current.organization_id, template_key=f"custom-{uuid4().hex[:12]}", name=payload.name, description=payload.description, latest_version=1, created_by=current.user_id)
+    session.add(template)
+    await session.flush()
+    version = ChartCutpointTemplateVersion(template_id=template.id, version=1, items=items, created_by=current.user_id)
+    session.add(version)
+    await session.commit()
+    await session.refresh(version)
+    return _template_read(template, version)
+
+
+@router.post("/chart-cutpoint-templates/{template_id}/versions", response_model=ChartCutpointTemplateRead)
+async def create_chart_cutpoint_template_version(template_id: UUID, payload: ChartCutpointTemplateVersionCreate, session: SessionDependency, current: CurrentUserDependency) -> ChartCutpointTemplateRead:
+    template = await session.scalar(select(ChartCutpointTemplate).where(ChartCutpointTemplate.id == template_id, ChartCutpointTemplate.organization_id == current.organization_id))
+    if template is None:
+        raise NotFoundError("切点模板", "chart_template_not_found")
+    items = [item.model_dump(mode="json") for item in payload.items]
+    try:
+        validate_template_items(items)
+    except ValueError as exc:
+        raise ConflictError("chart_template_invalid", str(exc)) from exc
+    template.latest_version += 1
+    version = ChartCutpointTemplateVersion(template_id=template.id, version=template.latest_version, items=items, created_by=current.user_id)
+    session.add(version)
+    await session.commit()
+    await session.refresh(version)
+    return _template_read(template, version)
 
 
 async def _meeting(
@@ -213,10 +290,10 @@ async def preview_text_export(
     meeting_id: UUID,
     session: SessionDependency,
     current: CurrentUserDependency,
-    selected: str | None = Query(default=None),
     show_attendee_names: bool = True,
-    template: str = "formal",
     include_cover: bool = True,
+    include_references: bool = True,
+    include_citation_markers: bool = True,
 ) -> TextPreviewRead:
     await _meeting(session, meeting_id, current.organization_id)
     bundle = await load_analysis_bundle(
@@ -224,15 +301,12 @@ async def preview_text_export(
         meeting_id=meeting_id,
         organization_id=current.organization_id,
     )
-    section_keys = (
-        [part for part in selected.split(",") if part] if selected else None
-    )
     return build_text_preview(
         bundle,
-        selected=section_keys,
         show_attendee_names=show_attendee_names,
-        template=template,
         include_cover=include_cover,
+        include_references=include_references,
+        include_citation_markers=include_citation_markers,
     )
 
 
@@ -461,9 +535,7 @@ async def plan_chart_export(
     meeting_id: UUID,
     session: SessionDependency,
     current: CurrentUserDependency,
-    chart_type: str = "bar",
-    target_question_id: UUID | None = None,
-    metric: str = "independent_speakers",
+    payload: ChartPlanCreate = Body(...),
 ) -> ExportRecordRead:
     await _meeting(session, meeting_id, current.organization_id)
     bundle = await load_analysis_bundle(
@@ -472,6 +544,37 @@ async def plan_chart_export(
         organization_id=current.organization_id,
     )
     await _active_export_check(session, meeting_id=meeting_id, export_type=ExportType.CHART)
+    default_template, default_version = await ensure_default_cutpoint_template(
+        session,
+        organization_id=current.organization_id,
+        created_by=current.user_id,
+    )
+    template_id = payload.template_id or default_template.id
+    selected_template = default_template
+    if template_id != default_template.id:
+        selected_template = await session.scalar(
+            select(ChartCutpointTemplate).where(
+                ChartCutpointTemplate.id == template_id,
+                ChartCutpointTemplate.organization_id == current.organization_id,
+            )
+        )
+        if selected_template is None:
+            raise NotFoundError("切点模板", "chart_template_not_found")
+    template_version = payload.template_version or (
+        default_version.version if template_id == default_template.id else selected_template.latest_version
+    )
+    if payload.cutpoint_key is None:
+        selected_version = default_version if template_id == default_template.id else await session.scalar(
+            select(ChartCutpointTemplateVersion).where(
+                ChartCutpointTemplateVersion.template_id == template_id,
+                ChartCutpointTemplateVersion.version == template_version,
+            )
+        )
+        if selected_version is None or not selected_version.items:
+            raise ConflictError("chart_template_version_not_found", "切点模板版本不存在")
+        cutpoint_key = str(selected_version.items[0].get("key") or "")
+    else:
+        cutpoint_key = payload.cutpoint_key
     record = await create_export_record(
         session,
         organization_id=current.organization_id,
@@ -480,9 +583,15 @@ async def plan_chart_export(
         export_type=ExportType.CHART,
         file_format=ExportFileFormat.PNG,
         config={
-            "chart_type": chart_type,
-            "target_question_id": str(target_question_id) if target_question_id else None,
-            "metric": metric,
+            "chart_mode": "cutpoint_distribution",
+            "chart_type": payload.chart_type,
+            "template_id": str(template_id),
+            "template_version": template_version,
+            "cutpoint_key": cutpoint_key,
+            "prepared_chart": True,
+            "indicator_mode": payload.indicator_mode,
+            "count_mode": payload.count_mode,
+            "title": payload.title,
         },
         created_by=current.user_id,
     )
@@ -505,12 +614,69 @@ async def list_charts(
         meeting_id=meeting_id,
         organization_id=current.organization_id,
     )
+    await ensure_default_cutpoint_template(
+        session,
+        organization_id=current.organization_id,
+        created_by=current.user_id,
+    )
+    await session.commit()
     specs = await list_chart_specs(
         session,
         meeting_id=meeting_id,
         analysis_version=bundle.analysis_version,
     )
     return [chart_spec_to_read(spec) for spec in specs]
+
+
+@router.get(
+    "/meetings/{meeting_id}/charts/selection",
+    response_model=ChartSelectionRead,
+    summary="获取已选入 PPT 的图表",
+)
+async def read_chart_selection(
+    meeting_id: UUID,
+    session: SessionDependency,
+    current: CurrentUserDependency,
+) -> ChartSelectionRead:
+    await _meeting(session, meeting_id, current.organization_id)
+    bundle = await load_analysis_bundle(
+        session,
+        meeting_id=meeting_id,
+        organization_id=current.organization_id,
+    )
+    chart_ids = await get_chart_selection(
+        session,
+        meeting_id=meeting_id,
+        analysis_version=bundle.analysis_version,
+    )
+    return ChartSelectionRead(chart_ids=[UUID(value) for value in chart_ids])
+
+
+@router.put(
+    "/meetings/{meeting_id}/charts/selection",
+    response_model=ChartSelectionRead,
+    summary="保存选入 PPT 的图表",
+)
+async def write_chart_selection(
+    meeting_id: UUID,
+    session: SessionDependency,
+    current: CurrentUserDependency,
+    payload: ChartSelectionUpdate,
+) -> ChartSelectionRead:
+    await _meeting(session, meeting_id, current.organization_id)
+    bundle = await load_analysis_bundle(
+        session,
+        meeting_id=meeting_id,
+        organization_id=current.organization_id,
+    )
+    saved = await save_chart_selection(
+        session,
+        meeting_id=meeting_id,
+        analysis_version=bundle.analysis_version,
+        organization_id=current.organization_id,
+        chart_ids=payload.chart_ids,
+    )
+    return ChartSelectionRead(chart_ids=[UUID(value) for value in saved])
 
 
 @router.get("/meetings/{meeting_id}/charts/{chart_id}/image")

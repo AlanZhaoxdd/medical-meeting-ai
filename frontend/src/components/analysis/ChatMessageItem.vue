@@ -5,6 +5,7 @@ import SourceList from '@/components/analysis/SourceList.vue'
 import type { ChatMessage, RagSource } from '@/types/meetingAnalysis'
 import {
   chatMessageStatusLabels,
+  chatRouteLabels,
   copyText,
   insufficientContextNotice,
   markdownToPlainText,
@@ -60,6 +61,7 @@ function nextTickScroll(id: string) {
     <div class="message-main">
       <div v-if="isAssistant" class="message-meta">
         <strong>AI 纪要助手</strong>
+        <el-tag v-if="message.route && !isActive" size="small" effect="plain">{{ chatRouteLabels[message.route] }}</el-tag>
         <el-tag v-if="isActive && message.stage" size="small" effect="light" type="warning">{{ ragStageLabels[message.stage] }}</el-tag>
         <el-tag v-else-if="isActive" size="small" effect="light" type="warning">{{ chatMessageStatusLabels[message.status] }}</el-tag>
       </div>

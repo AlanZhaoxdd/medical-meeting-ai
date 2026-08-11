@@ -6,11 +6,16 @@ services:
       context: ./model-service
       args:
         UV_DEFAULT_INDEX: ${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        # GPU is the default startup. The CUDA torch wheel replaces the CPU
+        # torch pinned in uv.lock (SJTU domestic mirror of download.pytorch.org).
+        # Override per host driver, for example:
+        #   TORCH_INDEX_URL=https://mirror.sjtu.edu.cn/pytorch-wheels/cu128
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://mirror.sjtu.edu.cn/pytorch-wheels/cu126}
     environment:
       HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
       BGE_EMBEDDING_MODEL: ${BGE_EMBEDDING_MODEL:-BAAI/bge-m3}
       BGE_RERANKER_MODEL: ${BGE_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
-      BGE_DEVICE: ${BGE_DEVICE:-cpu}
+      BGE_DEVICE: ${BGE_DEVICE:-cuda}
       BGE_BATCH_SIZE: ${BGE_BATCH_SIZE:-8}
       BGE_MAX_INPUT_CHARACTERS: ${BGE_MAX_INPUT_CHARACTERS:-32000}
       BGE_RERANKER_QUERY_MAX_LENGTH: ${BGE_RERANKER_QUERY_MAX_LENGTH:-128}

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthContext, require_role
+from app.core.auth import AuthContext, require_exact_role
 from app.core.config import get_settings
 from app.core.exceptions import AppException, NotFoundError
 from app.db.session import get_session
@@ -21,7 +21,7 @@ from app.schemas.kb import Role
 
 router = APIRouter(prefix="/admin/benchmarks", tags=["性能评测"])
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
-AdminDependency = Annotated[AuthContext, Depends(require_role(Role.ADMIN))]
+AdminDependency = Annotated[AuthContext, Depends(require_exact_role(Role.ADMIN))]
 
 
 def _serialize(run: BenchmarkRun) -> BenchmarkRead:

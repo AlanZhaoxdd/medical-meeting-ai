@@ -23,7 +23,6 @@ import {
   questionGenerationStageLabel,
   questionGenerationStatusLabels,
 } from '@/utils/meetingVerification'
-import { analysisStatusLabels } from '@/utils/meeting'
 import { selectionTypeCounts } from '@/utils/meetingAnalysis'
 import { toApiError } from '@/utils/errors'
 
@@ -125,21 +124,15 @@ const showMoreAvailable = computed(() => ({
   cut_point: nextOffset.value.cut_point >= 5 && poolTotal.value.cut_point > nextOffset.value.cut_point,
   open_ended: nextOffset.value.open_ended >= 5 && poolTotal.value.open_ended > nextOffset.value.open_ended,
 }))
+const showMoreCount = computed(() => ({
+  cut_point: Math.min(5, Math.max(0, poolTotal.value.cut_point - nextOffset.value.cut_point)),
+  open_ended: Math.min(5, Math.max(0, poolTotal.value.open_ended - nextOffset.value.open_ended)),
+}))
 const analysisStatus = computed(() => snapshot.value?.meeting.analysis_status ?? 'not_ready')
 const analysisLocked = computed(() => ['queued', 'processing', 'succeeded'].includes(analysisStatus.value))
 const actionReadonly = computed(() => readonly.value || generationInProgress.value || analysisLocked.value)
 const canStart = computed(() => !actionReadonly.value && selectionCounts.value.cutPoint >= 1 && selectionCounts.value.openEnded >= 1)
 const analysisSucceeded = computed(() => analysisStatus.value === 'succeeded')
-const displayStatus = computed(() => analysisStatusLabels[analysisStatus.value])
-const displayStatusType = computed<'success' | 'warning' | 'danger' | 'info' | 'primary'>(() => ({
-  succeeded: 'success',
-  processing: 'warning',
-  queued: 'warning',
-  failed: 'danger',
-  cancelled: 'info',
-  ready: 'primary',
-  not_ready: 'info',
-})[analysisStatus.value] ?? 'info')
 
 function clearTaskTimer() {
   if (pollTimer.value !== null) {
@@ -508,10 +501,6 @@ onBeforeRouteLeave(allowNavigation)
           <h1 class="page-title">{{ snapshot.meeting.title }}</h1>
           <p class="page-subtitle">最近更新：{{ dayjs(snapshot.meeting.updated_at).format('YYYY-MM-DD HH:mm') }}</p>
         </div>
-        <div class="detail-header-actions">
-          <el-tag :type="displayStatusType" size="large">{{ displayStatus }}</el-tag>
-          <el-button :disabled="!analysisSucceeded" type="primary" @click="router.push({ name: 'meeting-analysis', params: { meetingId } })">AI 纪要分析</el-button>
-        </div>
       </div>
       <div class="generation-stack">
         <el-card v-if="generationTask && generationInProgress" class="generation-card" shadow="never">
@@ -555,6 +544,7 @@ onBeforeRouteLeave(allowNavigation)
               :swap-loading-id="swapLoadingId"
               :pool-exhausted="poolExhausted"
               :show-more-available="showMoreAvailable"
+              :show-more-count="showMoreCount"
               :readonly="actionReadonly"
               :saving="saving || candidateLoading"
               @select="toggleSelect"
@@ -577,6 +567,7 @@ onBeforeRouteLeave(allowNavigation)
               :swap-loading-id="swapLoadingId"
               :pool-exhausted="poolExhausted"
               :show-more-available="showMoreAvailable"
+              :show-more-count="showMoreCount"
               :readonly="actionReadonly"
               :saving="saving || candidateLoading"
               @select="toggleSelect"
@@ -667,9 +658,8 @@ onBeforeRouteLeave(allowNavigation)
 .verification-tabs :deep(.el-tabs__content) { overflow: visible; }
 .flow-hint { padding: 10px 14px; margin-bottom: 14px; border-radius: 8px; color: #52727c; background: #edf7f3; font-size: 13px; }
 .flow-hint span { padding: 0 8px; color: #168b82; font-weight: 700; }
-.page-header { align-items: flex-start; }
-.page-header .el-button { padding-left: 0; }
-.detail-header-actions { display: grid; justify-items: end; gap: 12px; }
+.page-header { align-items: flex-start; flex-wrap: wrap; gap: 24px; }
+.page-header .el-button.is-link { padding-left: 0; }
 .generation-card { border: 1px solid #b9dedd; background: #f4fbfa; }
 .analysis-card { border-color: #cdc3ee; background: #f8f6fd; }
 .generation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }

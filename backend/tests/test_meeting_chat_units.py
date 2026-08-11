@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -6,23 +7,38 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.exceptions import AppException
+from app.models.chat import ChatMessage
+from app.models.meeting import Meeting
 from app.schemas.analysis import (
     MeetingChatRequest,
     MeetingChatResponse,
     MeetingChatSource,
 )
 from app.services.meeting_chat import (
+    CHAT_AGENT_PROMPT_VERSION,
     CHAT_PROMPT_VERSION,
     CHAT_REWRITE_PROMPT_VERSION,
     CHAT_REWRITE_SYSTEM_PROMPT,
+    CHAT_ROUTE_PROMPT_VERSION,
+    CHAT_ROUTE_SYSTEM_PROMPT,
     CHAT_SYSTEM_PROMPT,
+    GENERAL_ANSWER_NOTE,
+    GENERAL_ANSWER_PROMPT_VERSION,
+    GENERAL_ANSWER_SYSTEM_PROMPT,
     INSUFFICIENT_ANSWER,
+    REFUSED_ANSWER,
     MeetingChatModelClient,
     MeetingChatRewriter,
+    MeetingChatRouter,
+    answer_meeting_question,
     build_chat_materials,
     build_chat_sources,
+    build_general_prompt,
+    build_refused_response,
     build_rewrite_prompt,
+    build_route_prompt,
     generate_chat_answer,
+    generate_general_answer,
 )
 
 
@@ -386,3 +402,262 @@ async def test_rewriter_falls_back_on_overlong_result() -> None:
         max_result_chars=100,
     )
     assert result == "那呢？"
+
+
+def test_agent_prompt_versions_are_stable() -> None:
+    assert CHAT_AGENT_PROMPT_VERSION == "meeting-agent-v1"
+    assert CHAT_ROUTE_PROMPT_VERSION == "chat-route-v1"
+    assert GENERAL_ANSWER_PROMPT_VERSION == "general-answer-v1"
+
+
+def test_chat_response_accepts_agent_route() -> None:
+    response = MeetingChatResponse(
+        conversation_id=uuid4(),
+        message_id=uuid4(),
+        answer="答案",
+        status="COMPLETED",
+        sources=[],
+        route="GENERAL_LLM",
+    )
+    assert response.route == "GENERAL_LLM"
+
+
+def test_route_prompt_includes_rules_and_scope_availability() -> None:
+    prompt = build_route_prompt("剂量是多少？", scope="MEETING_AND_KB", has_kb=True)
+    assert CHAT_ROUTE_SYSTEM_PROMPT in prompt
+    assert "已连接知识库的已发布文档" in prompt
+    assert "用户问题：剂量是多少？" in prompt
+
+    meeting_only = build_route_prompt("剂量是多少？", scope="CURRENT_MEETING", has_kb=False)
+    assert "已连接知识库的已发布文档" not in meeting_only
+
+    no_general = build_route_prompt(
+        "剂量是多少？",
+        scope="MEETING_AND_KB",
+        has_kb=True,
+        allow_general=False,
+    )
+    assert "一律输出 REFUSED" in no_general
+
+
+async def test_router_returns_general_route() -> None:
+    async def generator(prompt: str) -> str:
+        assert "用户问题：今天天气怎么样？" in prompt
+        return "GENERAL_LLM"
+
+    router = MeetingChatRouter(generator=generator)
+    result = await router.route(
+        question="今天天气怎么样？",
+        scope="MEETING_AND_KB",
+        has_kb=True,
+    )
+    assert result == "GENERAL_LLM"
+
+
+async def test_router_parses_quoted_or_messy_output() -> None:
+    async def generator(_prompt: str) -> str:
+        return "“general_llm”"
+
+    router = MeetingChatRouter(generator=generator)
+    assert (
+        await router.route(question="q", scope="CURRENT_MEETING", has_kb=False)
+        == "GENERAL_LLM"
+    )
+
+
+async def test_router_falls_back_on_unparseable_output() -> None:
+    async def generator(_prompt: str) -> str:
+        return "我不知道该走哪条路"
+
+    router = MeetingChatRouter(generator=generator)
+    assert (
+        await router.route(question="q", scope="CURRENT_MEETING", has_kb=False)
+        == "MEETING_GROUNDED"
+    )
+
+
+async def test_router_falls_back_on_model_failure() -> None:
+    async def broken(_prompt: str) -> str:
+        raise RuntimeError("boom")
+
+    router = MeetingChatRouter(generator=broken)
+    assert (
+        await router.route(question="q", scope="CURRENT_MEETING", has_kb=False)
+        == "MEETING_GROUNDED"
+    )
+
+
+async def test_router_falls_back_when_llm_unconfigured(monkeypatch) -> None:
+    settings = SimpleNamespace(
+        llm_base_url="",
+        resolved_llm_api_key="",
+        llm_model="",
+    )
+    monkeypatch.setattr(
+        "app.services.meeting_chat.get_settings",
+        lambda: settings,
+    )
+    router = MeetingChatRouter()
+    result = await router.route(
+        question="q",
+        scope="MEETING_AND_KB",
+        has_kb=True,
+    )
+    assert result == "MEETING_GROUNDED"
+
+
+def test_general_prompt_includes_scope_note() -> None:
+    prompt = build_general_prompt("什么是高血压？")
+    assert GENERAL_ANSWER_SYSTEM_PROMPT in prompt
+    assert GENERAL_ANSWER_NOTE in prompt
+    assert "用户问题：什么是高血压？" in prompt
+
+
+async def test_generate_general_answer_uses_prompt_generator() -> None:
+    async def prompt_generator(prompt: str) -> str:
+        assert "用户问题：什么是高血压？" in prompt
+        return f"高血压是一种慢性病。\n\n{GENERAL_ANSWER_NOTE}"
+
+    client = MeetingChatModelClient(prompt_generator=prompt_generator)
+    response = await generate_general_answer(
+        question="什么是高血压？",
+        conversation_id=None,
+        model_client=client,
+    )
+    assert response.status == "COMPLETED"
+    assert response.route == "GENERAL_LLM"
+    assert response.sources == []
+    assert GENERAL_ANSWER_NOTE in response.answer
+
+
+def test_build_refused_response_marks_refused_route() -> None:
+    response = build_refused_response(conversation_id=None)
+    assert response.route == "REFUSED"
+    assert response.status == "COMPLETED"
+    assert response.answer == REFUSED_ANSWER
+    assert response.sources == []
+
+
+class _FakeChatSession:
+    """Minimal async session stub for agent routing integration tests."""
+
+    def __init__(self, meeting: Meeting) -> None:
+        self.meeting = meeting
+        self.added: list[object] = []
+        self.commits = 0
+
+    async def get(self, model: type[object], _pk: object) -> object | None:
+        if model is Meeting:
+            return self.meeting
+        return None
+
+    async def scalar(self, _stmt: object) -> object | None:
+        return None
+
+    async def scalars(self, _stmt: object) -> object:
+        class _Result:
+            @staticmethod
+            def all() -> list[object]:
+                return []
+
+        return _Result()
+
+    def add(self, obj: object) -> None:
+        self.added.append(obj)
+
+    async def flush(self) -> None:
+        for obj in self.added:
+            if getattr(obj, "id", None) is None:
+                obj.id = uuid4()
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
+def _fake_meeting() -> Meeting:
+    now = datetime.now(timezone.utc)
+    return Meeting(
+        id=uuid4(),
+        organization_id=uuid4(),
+        knowledge_base_id=None,
+        title="月度病例讨论会",
+        starts_at=now,
+        ends_at=now + timedelta(hours=1),
+        meeting_info={},
+    )
+
+
+async def test_agent_routes_general_question_to_llm_without_retrieval() -> None:
+    meeting = _fake_meeting()
+    session = _FakeChatSession(meeting)
+    retrieved: list[str] = []
+
+    async def retriever(*args: object, **kwargs: object) -> list[object]:
+        retrieved.append("called")
+        return []
+
+    async def prompt_generator(prompt: str) -> str:
+        assert "通用知识" in prompt
+        return f"这是一般性回答。\n\n{GENERAL_ANSWER_NOTE}"
+
+    async def router_generator(_prompt: str) -> str:
+        return "GENERAL_LLM"
+
+    response = await answer_meeting_question(
+        session,
+        meeting_id=meeting.id,
+        payload=MeetingChatRequest(meeting_id=meeting.id, question="剂量是多少？"),
+        organization_id=meeting.organization_id or uuid4(),
+        model_client=MeetingChatModelClient(prompt_generator=prompt_generator),
+        router=MeetingChatRouter(generator=router_generator),
+        retriever=retriever,
+    )
+    assert response.route == "GENERAL_LLM"
+    assert response.status == "COMPLETED"
+    assert response.sources == []
+    assert GENERAL_ANSWER_NOTE in response.answer
+    assert retrieved == []
+    messages = [item for item in session.added if isinstance(item, ChatMessage)]
+    assert len(messages) == 2
+    assert messages[0].role == "user"
+    assert messages[0].route == "GENERAL_LLM"
+    assert messages[1].role == "assistant"
+    assert messages[1].route == "GENERAL_LLM"
+
+
+async def test_agent_refuses_question_without_model_or_retrieval() -> None:
+    meeting = _fake_meeting()
+    session = _FakeChatSession(meeting)
+    model_calls: list[str] = []
+    retrieved: list[str] = []
+
+    async def prompt_generator(prompt: str) -> str:
+        model_calls.append(prompt)
+        return "不应被调用"
+
+    async def retriever(*args: object, **kwargs: object) -> list[object]:
+        retrieved.append("called")
+        return []
+
+    async def router_generator(_prompt: str) -> str:
+        return "REFUSED"
+
+    response = await answer_meeting_question(
+        session,
+        meeting_id=meeting.id,
+        payload=MeetingChatRequest(meeting_id=meeting.id, question="剂量是多少？"),
+        organization_id=meeting.organization_id or uuid4(),
+        model_client=MeetingChatModelClient(prompt_generator=prompt_generator),
+        router=MeetingChatRouter(generator=router_generator),
+        retriever=retriever,
+    )
+    assert response.route == "REFUSED"
+    assert response.status == "COMPLETED"
+    assert response.answer == REFUSED_ANSWER
+    assert response.sources == []
+    assert model_calls == []
+    assert retrieved == []
+    messages = [item for item in session.added if isinstance(item, ChatMessage)]
+    assert len(messages) == 2
+    assert messages[0].route == "REFUSED"
+    assert messages[1].route == "REFUSED"

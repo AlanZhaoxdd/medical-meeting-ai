@@ -115,6 +115,7 @@ class MeetingRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    import_id: Optional[UUID] = None
     organization_id: Optional[UUID]
     knowledge_base_id: Optional[UUID]
     title: str

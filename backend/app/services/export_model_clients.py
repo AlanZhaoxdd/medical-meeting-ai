@@ -12,6 +12,7 @@ from app.schemas.export import PptDeckSpec
 from app.services.export_prompts import (
     CHART_PLAN_PROMPT_VERSION,
     CHART_PLAN_SYSTEM_PROMPT,
+    NUMERIC_EXTRACTION_SYSTEM_PROMPT,
     PPT_OUTLINE_PROMPT_VERSION,
     PPT_OUTLINE_SYSTEM_PROMPT,
 )
@@ -74,6 +75,35 @@ class ChartPlanResult(BaseModel):
     planNote: str = Field(default="", max_length=500)
 
 
+class NumericObservation(BaseModel):
+    # Invalid rows must reach the deterministic backend validator so they can
+    # be excluded with a reason/evidence record instead of failing the whole
+    # structured response.
+    model_config = ConfigDict(extra="ignore")
+
+    cutpointKey: str | None = Field(default="", max_length=80)
+    population: str | None = Field(default="", max_length=200)
+    populationRaw: str = Field(default="", max_length=300)
+    speakerName: str | None = Field(default="", max_length=200)
+    indicatorMode: str | None = Field(default="", max_length=200)
+    context: str | None = Field(default="", max_length=300)
+    value: float | str | None = None
+    lower: float | None = None
+    upper: float | None = None
+    comparator: str | None = Field(default=None, max_length=8)
+    rawValue: str | None = Field(default="", max_length=100)
+    unit: str | None = Field(default="", max_length=50)
+    sourceIds: list[str] = Field(default_factory=list, max_length=20)
+    rationale: str = Field(default="", max_length=500)
+
+
+class NumericExtractionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observations: list[NumericObservation] = Field(default_factory=list, max_length=500)
+    planNote: str = Field(default="", max_length=500)
+
+
 class ChartPlanModelClient:
     """Structured-output LLM boundary for chart classification planning."""
 
@@ -90,6 +120,15 @@ class ChartPlanModelClient:
         if self.generator is not None:
             return await self.generator(payload)
         return await self._invoke(ChartPlanResult, payload)
+
+    async def extract_numeric(self, payload: dict[str, Any]) -> NumericExtractionResult:
+        if self.generator is not None:
+            result = await self.generator(payload)
+            if isinstance(result, NumericExtractionResult):
+                return result
+            if isinstance(result, dict):
+                return NumericExtractionResult.model_validate(result)
+        return await self._invoke_numeric(NumericExtractionResult, payload)
 
     async def _invoke(
         self, schema: type[ChartPlanResult], payload: dict[str, Any]
@@ -138,6 +177,44 @@ class ChartPlanModelClient:
             raise AppException(
                 502, "chart_plan_invalid", "图表分类结构化输出校验失败"
             ) from exc
+
+    async def _invoke_numeric(
+        self, schema: type[NumericExtractionResult], payload: dict[str, Any]
+    ) -> NumericExtractionResult:
+        settings = get_settings()
+        if not settings.llm_base_url or not settings.resolved_llm_api_key or not settings.llm_model:
+            raise AppException(503, "chart_model_unavailable", "图表分析模型不可用")
+        from langchain_openai import ChatOpenAI
+
+        options: dict[str, Any] = {
+            "base_url": settings.llm_base_url,
+            "api_key": SecretStr(settings.resolved_llm_api_key),
+            "model": settings.llm_model,
+            "temperature": 0.0,
+            "timeout": 120,
+            "max_retries": 2,
+        }
+        if "api.deepseek.com" in settings.llm_base_url:
+            options["extra_body"] = {"thinking": {"type": "disabled"}}
+        model = ChatOpenAI(**options).with_structured_output(
+            schema,
+            method="json_mode" if "api.deepseek.com" in settings.llm_base_url else "function_calling",
+            include_raw=True,
+        )
+        prompt = (
+            f"{NUMERIC_EXTRACTION_SYSTEM_PROMPT}\n"
+            f"Schema JSON：{json.dumps(schema.model_json_schema(), ensure_ascii=False)}\n"
+            f"输入：{json.dumps(payload, ensure_ascii=False, default=str)[:160000]}"
+        )
+        response = await model.ainvoke(prompt)
+        parsed = response.get("parsed") if isinstance(response, dict) else response
+        if parsed is None and isinstance(response, dict):
+            parsed = _parse_json_value(_raw_structured_value(response.get("raw")))
+        parsed = _unwrap_schema_envelope(_parse_json_value(parsed), schema)
+        try:
+            return parsed if isinstance(parsed, schema) else schema.model_validate(parsed)
+        except Exception as exc:
+            raise AppException(502, "chart_numeric_invalid", "图表数值抽取结构校验失败") from exc
 
 
 class PptOutlineModelClient:

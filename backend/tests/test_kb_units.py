@@ -137,6 +137,7 @@ def test_source_reference_and_state_machine_guards() -> None:
     with pytest.raises(ValidationError):
         SourceRef(quote="没有定位")
     ensure_transition("UPLOADED", DocumentStatus.PARSING)
+    ensure_transition("EXTRACTING", DocumentStatus.PUBLISHED)
     with pytest.raises(ConflictError):
         ensure_transition("UPLOADED", DocumentStatus.PUBLISHED)
 

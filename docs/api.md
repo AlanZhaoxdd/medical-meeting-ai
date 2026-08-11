@@ -37,9 +37,14 @@ owner/admin 可管理成员；只有 owner 可变更 owner 角色，且 owner �
 - `GET|PUT /meetings/{meeting_id}/exports/ppt/outline` 获取 / 保存编辑后大纲
 - `POST /meetings/{meeting_id}/exports/ppt/outline/regenerate-page` 重新生成单页
 - `POST /meetings/{meeting_id}/exports/ppt` 发起 PPTX 导出
-- `POST /meetings/{meeting_id}/charts/plan` 发起图表分析（LLM 分类 + 程序统计）
+- `POST /meetings/{meeting_id}/charts/plan` 发起单场会议切点图表分析（AI 数值抽取 + 程序区间统计）
 - `GET /meetings/{meeting_id}/charts` 获取已验证图表（ChartSpec）
 - `GET /meetings/{meeting_id}/charts/{chart_id}/image?fmt=png|svg` 下载图表图片
+
+图表分析请求体包含 `chart_type`（`bar`/`pie`）、组织切点模板及版本、`cutpoint_key`、
+可选 `indicator_mode` 和统计口径。模板严格包含 11 个切点；每个切点包含互斥数值区间。
+AI 只返回原始数值、单位、发言人和 sourceId，人数、次数、区间归类和饼图百分比由后端计算。
+无法可靠归类的数据不进入图表，但会保存在图表结果的排除记录中。
 - `GET /exports/{export_id}` 查询任务状态与进度
 - `POST /exports/{export_id}/retry` 重试失败任务
 - `POST /exports/{export_id}/cancel` 取消运行中任务

@@ -3,6 +3,7 @@ import { Marked } from 'marked'
 import type {
   AnalysisModuleState,
   AnalysisModule,
+  ChatRoute,
   ChatMessageStatus,
   ChatScope,
   RagSource,
@@ -40,6 +41,12 @@ export const chatScopeLabels: Record<ChatScope, string> = {
   MEETING_AND_KB: '当前会议 + 知识库',
 }
 
+export const chatRouteLabels: Record<ChatRoute, string> = {
+  MEETING_GROUNDED: '基于会议与知识库',
+  GENERAL_LLM: '通用知识回答',
+  REFUSED: '超出作答范围',
+}
+
 export const chatMessageStatusLabels: Record<ChatMessageStatus, string> = {
   sending: '正在发送',
   streaming: '正在生成',
@@ -52,10 +59,12 @@ export const chatMessageStatusLabels: Record<ChatMessageStatus, string> = {
 
 export const ragStageLabels: Record<RagStage, string> = {
   IDLE: '准备中',
+  ROUTING: '正在判断问题类型',
   RETRIEVING_MEETING: '正在检索会议内容',
   RETRIEVING_KB: '正在检索知识库',
   ORGANIZING: '正在组织回答',
   STREAMING: '正在输出答案',
+  GENERAL_LLM: '正在生成通用回答',
   DONE: '完成',
 }
 
@@ -85,6 +94,17 @@ const marked = new Marked({
 })
 
 /**
+ * Promote the analysis minutes' numbered bold section headings
+ * ("**一、会议概述**") back to real markdown headings. The model emits
+ * section titles as bold text on their own line, which markdown renders as
+ * an inline <strong>; turning them into "## " headings keeps them bold and
+ * larger instead of blending into the paragraph.
+ */
+export function promoteSectionHeadings(content: string): string {
+  return content.replace(/^\*\*([一二三四五六七八九十]+、[^*\n]+?)\*\*\s*$/gm, '## $1')
+}
+
+/**
  * Render untrusted LLM markdown to safe HTML. All raw HTML is removed by
  * DOMPurify, and citation markers like [1] become in-page anchors so the
  * "参考来源" section can be reached from the answer body.
@@ -96,7 +116,8 @@ export function renderMarkdown(content: string, sources: RagSource[] = []): stri
         return exists ? `<a class="citation-anchor" href="#source-${index}">[${index}]</a>` : match
       })
     : content
-  const rawHtml = marked.parse(withCitations, { async: false }) as string
+  const withSectionHeadings = promoteSectionHeadings(withCitations)
+  const rawHtml = marked.parse(withSectionHeadings, { async: false }) as string
   return DOMPurify.sanitize(rawHtml, {
     ADD_ATTR: ['target'],
     ADD_TAGS: ['a'],

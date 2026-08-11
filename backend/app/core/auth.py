@@ -108,18 +108,39 @@ def require_role(
     return dependency
 
 
+def require_exact_role(
+    required: Role,
+) -> Callable[[AuthContext], Awaitable[AuthContext]]:
+    """Require one exact role for administration-only endpoints.
+
+    ``require_role`` intentionally implements the existing role hierarchy, so
+    an owner also satisfies an admin minimum. Settings are deliberately a
+    separate permission boundary: the owner-facing account is a minutes
+    editor and must not inherit IT administration access.
+    """
+
+    async def dependency(current: CurrentUserDependency) -> AuthContext:
+        if current.role != required:
+            raise ForbiddenError()
+        return current
+
+    return dependency
+
+
 async def require_kb_access(
     session: AsyncSession,
     current: AuthContext,
     kb_id: UUID,
 ) -> KnowledgeBase:
-    kb = await session.scalar(
-        select(KnowledgeBase).where(
-            KnowledgeBase.id == kb_id,
-            KnowledgeBase.organization_id == current.organization_id,
-            KnowledgeBase.deleted_at.is_(None),
-        )
+    statement = select(KnowledgeBase).where(
+        KnowledgeBase.id == kb_id,
+        KnowledgeBase.organization_id == current.organization_id,
     )
+    # Minutes editors retain business access to existing/import-linked KBs.
+    # IT admin remains the only role that can reach the settings surface.
+    if current.role not in {Role.EDITOR, Role.OWNER}:
+        statement = statement.where(KnowledgeBase.deleted_at.is_(None))
+    kb = await session.scalar(statement)
     if kb is None:
         raise ForbiddenError("知识库不存在或无权访问")
     return kb

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SchemaBase(BaseModel):
@@ -32,7 +32,6 @@ class TextPreviewRead(BaseModel):
     organizer: Optional[str] = None
     topic: Optional[str] = None
     analysis_version: int
-    template: str
     include_cover: bool
     sections: list[TextExportSection]
     sources: list[dict[str, Any]] = Field(default_factory=list)
@@ -42,11 +41,9 @@ class TextExportCreate(SchemaBase):
     format: Literal["docx", "pdf"]
     file_name: Optional[str] = Field(default=None, max_length=150)
     include_cover: bool = True
-    template: Literal["formal", "minimal"] = "formal"
-    sections: Optional[list[str]] = Field(default=None, max_length=30)
     show_attendee_names: bool = True
     include_references: bool = True
-    include_timestamps: bool = False
+    include_citation_markers: bool = True
 
 
 class PptBulletOut(BaseModel):
@@ -73,7 +70,9 @@ class PptDeckSpec(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     subtitle: Optional[str] = Field(default=None, max_length=500)
     theme: Literal["formal", "minimal"] = "formal"
-    slides: list[PptSlideOut] = Field(default_factory=list, min_length=6, max_length=8)
+    # Base LLM outline is 6-8 pages; user-selected chart pages are appended, so
+    # allow up to 12 slides.
+    slides: list[PptSlideOut] = Field(default_factory=list, min_length=6, max_length=12)
 
 
 class PptOutlineRead(BaseModel):
@@ -102,7 +101,9 @@ class PptExportCreate(SchemaBase):
     report_unit: Optional[str] = Field(default=None, max_length=200)
     presenter: Optional[str] = Field(default=None, max_length=200)
     logo_url: Optional[str] = Field(default=None, max_length=2048)
-    slides: Optional[list[PptSlideOut]] = Field(default=None, max_length=8)
+    # Keep this in sync with PptDeckSpec: chart pages can expand the outline
+    # beyond the base 6-8 slide deck, up to 12 slides total.
+    slides: Optional[list[PptSlideOut]] = Field(default=None, max_length=12)
 
 
 class ChartEvidenceOut(BaseModel):
@@ -120,7 +121,9 @@ class ChartCategoryOut(BaseModel):
 
     key: str
     label: str
-    value: int = Field(ge=0)
+    value: float = Field(ge=0)
+    lower: Optional[float] = None
+    upper: Optional[float] = None
     percentage: Optional[float] = None
     evidence: list[ChartEvidenceOut] = Field(default_factory=list)
 
@@ -140,14 +143,102 @@ class ChartSpecRead(BaseModel):
     denominator: Optional[dict[str, Any]] = None
     categories: list[ChartCategoryOut] = Field(default_factory=list)
     validation: dict[str, Any] = Field(default_factory=dict)
+    interpretation: Optional[str] = None
     generated_at: str
+    template_id: Optional[UUID] = None
+    template_version: Optional[int] = None
+    cutpoint_key: Optional[str] = None
+    indicator_mode: Optional[str] = None
+    unit: Optional[str] = None
+    count_mode: Optional[Literal["unique_speakers", "evidence_count"]] = None
+    bin_definition: list[dict[str, Any]] = Field(default_factory=list)
+    valid_observation_count: int = 0
+    excluded_observation_count: int = 0
+    excluded_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    data_origin: Optional[Literal["demo", "model"]] = None
+
+
+class ChartBin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=200)
+    lower: Optional[float] = None
+    upper: Optional[float] = None
+    lower_inclusive: bool = True
+    upper_inclusive: bool = False
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "ChartBin":
+        if self.lower is None and self.upper is None:
+            raise ValueError("区间至少需要一个边界")
+        if self.lower is not None and self.upper is not None and self.lower >= self.upper:
+            raise ValueError("区间下界必须小于上界")
+        if self.lower is None and self.lower_inclusive:
+            self.lower_inclusive = False
+        if self.upper is None and self.upper_inclusive:
+            self.upper_inclusive = False
+        return self
+
+
+class ChartCutpointItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=200)
+    question: str = Field(default="", max_length=500)
+    chart_title: str = Field(default="", max_length=300)
+    aliases: list[str] = Field(default_factory=list, max_length=30)
+    indicator: str = Field(min_length=1, max_length=300)
+    indicator_options: list[str] = Field(default_factory=list, max_length=10)
+    unit: str = Field(max_length=50)
+    unit_aliases: list[str] = Field(default_factory=list, max_length=20)
+    count_mode: Literal["unique_speakers", "evidence_count"] = "unique_speakers"
+    bins: list[ChartBin] = Field(default_factory=list)
+
+
+class ChartCutpointTemplateRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    template_key: str
+    name: str
+    description: str
+    version: int
+    items: list[ChartCutpointItem]
+    created_at: datetime
+
+
+class ChartCutpointTemplateCreate(SchemaBase):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    items: list[ChartCutpointItem] = Field(min_length=11, max_length=11)
+
+
+class ChartCutpointTemplateVersionCreate(SchemaBase):
+    items: list[ChartCutpointItem] = Field(min_length=11, max_length=11)
 
 
 class ChartPlanCreate(SchemaBase):
     chart_type: Literal["bar", "pie"]
-    target_question_id: Optional[UUID] = None
     title: Optional[str] = Field(default=None, max_length=300)
-    metric: Literal["independent_speakers", "evidence_count"] = "independent_speakers"
+    template_id: Optional[UUID] = None
+    template_version: Optional[int] = Field(default=None, ge=1)
+    cutpoint_key: Optional[str] = Field(default=None, max_length=80)
+    indicator_mode: Optional[str] = Field(default=None, max_length=100)
+    count_mode: Optional[Literal["unique_speakers", "evidence_count"]] = None
+
+
+class ChartSelectionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chart_ids: list[UUID] = Field(default_factory=list, max_length=8)
+
+
+class ChartSelectionRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chart_ids: list[UUID] = Field(default_factory=list)
 
 
 class ExportRecordRead(BaseModel):

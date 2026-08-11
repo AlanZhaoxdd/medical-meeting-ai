@@ -4,6 +4,7 @@ import {
   normalizeChartSpec,
   normalizeExportRecord,
   type ChartSpec,
+  type ChartCutpointTemplate,
   type ExportRecord,
   type ExportRecordList,
   type PptDeckSpec,
@@ -110,10 +111,10 @@ export const meetingExportsApi = {
   ): Promise<TextPreview> {
     const { data } = await http.get<unknown>(`${exportsRoot(meetingId)}/text/preview`, {
       params: {
-        selected: config.sections?.length ? config.sections.join(',') : undefined,
         show_attendee_names: config.show_attendee_names,
-        template: config.template,
         include_cover: config.include_cover,
+        include_references: config.include_references,
+        include_citation_markers: config.include_citation_markers,
       },
       timeout: 30_000,
     })
@@ -173,14 +174,73 @@ export const meetingExportsApi = {
   },
   async planChart(
     meetingId: string,
-    payload: { chart_type: 'bar' | 'pie'; target_question_id?: string | null; metric: string },
+    payload: {
+      chart_type: 'bar' | 'pie'
+      template_id?: string | null
+      template_version?: number | null
+      cutpoint_key?: string | null
+      indicator_mode?: string | null
+      count_mode?: 'unique_speakers' | 'evidence_count' | null
+      title?: string | null
+    },
   ): Promise<ExportRecord> {
-    const { data } = await http.post<unknown>(`${chartsRoot(meetingId)}/plan`, null, {
-      params: payload,
-    })
+    const { data } = await http.post<unknown>(`${chartsRoot(meetingId)}/plan`, payload)
     const record = normalizeExportRecord(data)
     if (!record) throw new Error('图表分析任务格式不正确。')
     return record
+  },
+  async listChartCutpointTemplates(): Promise<ChartCutpointTemplate[]> {
+    const { data } = await http.get<unknown>('/api/v1/chart-cutpoint-templates')
+    return (Array.isArray(data) ? data : []).map((item) => {
+      const value = (item ?? {}) as Record<string, unknown>
+      return {
+        id: String(value.id ?? ''),
+        template_key: String(value.template_key ?? ''),
+        name: String(value.name ?? ''),
+        description: String(value.description ?? ''),
+        version: Number(value.version ?? 1) || 1,
+        items: Array.isArray(value.items) ? value.items.map((rawItem) => {
+          const item = (rawItem ?? {}) as Record<string, unknown>
+          return {
+            key: String(item.key ?? ''),
+            label: String(item.label ?? ''),
+            question: String(item.question ?? ''),
+            chart_title: String(item.chart_title ?? ''),
+            aliases: Array.isArray(item.aliases) ? item.aliases.map(String) : [],
+            indicator: String(item.indicator ?? ''),
+            indicator_options: Array.isArray(item.indicator_options) ? item.indicator_options.map(String) : [],
+            unit: String(item.unit ?? ''),
+            unit_aliases: Array.isArray(item.unit_aliases) ? item.unit_aliases.map(String) : [],
+            count_mode: item.count_mode === 'evidence_count' ? 'evidence_count' : 'unique_speakers',
+            bins: Array.isArray(item.bins) ? item.bins.map((rawBin) => {
+              const bin = (rawBin ?? {}) as Record<string, unknown>
+              return {
+                key: String(bin.key ?? ''),
+                label: String(bin.label ?? ''),
+                lower: typeof bin.lower === 'number' ? bin.lower : null,
+                upper: typeof bin.upper === 'number' ? bin.upper : null,
+                lower_inclusive: bin.lower_inclusive !== false,
+                upper_inclusive: bin.upper_inclusive === true,
+              }
+            }) : [],
+          }
+        }) : [],
+        created_at: String(value.created_at ?? ''),
+      }
+    }).filter((item) => item.id)
+  },
+  async saveChartSelection(
+    meetingId: string,
+    payload: { chart_ids: string[] },
+  ): Promise<{ chart_ids: string[] }> {
+    const { data } = await http.put<unknown>(`${chartsRoot(meetingId)}/selection`, payload)
+    const value = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+    return { chart_ids: Array.isArray(value.chart_ids) ? value.chart_ids.map(String) : [] }
+  },
+  async getChartSelection(meetingId: string): Promise<{ chart_ids: string[] }> {
+    const { data } = await http.get<unknown>(`${chartsRoot(meetingId)}/selection`)
+    const value = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+    return { chart_ids: Array.isArray(value.chart_ids) ? value.chart_ids.map(String) : [] }
   },
   async listCharts(meetingId: string): Promise<ChartSpec[]> {
     const { data } = await http.get<unknown>(chartsRoot(meetingId))

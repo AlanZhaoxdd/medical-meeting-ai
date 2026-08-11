@@ -31,9 +31,7 @@ const statusLabels: Record<string, string> = {
   embed_chunks: '向量化',
   extract_knowledge: '知识提取',
   validate_evidence: '证据验证',
-  save_draft: '保存暂存',
-  review_gate: '等待审核',
-  publish_document: '发布',
+  publish_document: '自动发布',
   finalize: '已完成',
   UPLOADED: '已上传',
   PARSING: '解析中',
@@ -41,8 +39,6 @@ const statusLabels: Record<string, string> = {
   CHUNKING: '切块中',
   EMBEDDING: '向量化中',
   EXTRACTING: '知识提取中',
-  AWAITING_REVIEW: '待审核',
-  IN_REVIEW: '审核中',
   PUBLISHED: '已发布',
   FAILED: '处理失败',
   DELETED: '已删除',
@@ -68,7 +64,7 @@ function startPolling(jobId: string) {
     try {
       const job = await kbApi.job(jobId)
       jobs.value[job.document_id] = job
-      if (['COMPLETED', 'FAILED', 'WAITING_REVIEW'].includes(job.status)) {
+      if (['COMPLETED', 'FAILED'].includes(job.status)) {
         window.clearInterval(timer)
         pollers.delete(timer)
         await load()
@@ -93,7 +89,7 @@ function monitor(jobId: string, documentId: string) {
   socket.onmessage = (event) => {
     const data = JSON.parse(event.data) as Job & { type?: string }
     if (data.type !== 'heartbeat') jobs.value[documentId] = data
-    if (['COMPLETED', 'FAILED', 'WAITING_REVIEW'].includes(data.status)) {
+    if (['COMPLETED', 'FAILED'].includes(data.status)) {
       socket.close()
       load()
     }
@@ -101,7 +97,7 @@ function monitor(jobId: string, documentId: string) {
   socket.onerror = () => socket.close()
   socket.onclose = () => {
     sockets.delete(socket)
-    if (!opened || !['COMPLETED', 'FAILED', 'WAITING_REVIEW'].includes(jobs.value[documentId]?.status)) startPolling(jobId)
+    if (!opened || !['COMPLETED', 'FAILED'].includes(jobs.value[documentId]?.status)) startPolling(jobId)
   }
 }
 
@@ -177,7 +173,7 @@ onBeforeUnmount(() => {
               <span>{{ statusLabels[jobFor(row).current_node] || jobFor(row).current_node }}</span>
               <el-progress :percentage="jobFor(row).progress" :stroke-width="5" :show-text="false" />
             </div>
-            <el-tag v-else :type="row.status === 'FAILED' ? 'danger' : row.status === 'PUBLISHED' ? 'success' : ['AWAITING_REVIEW', 'IN_REVIEW'].includes(row.status) ? 'warning' : 'info'" effect="light">
+            <el-tag v-else :type="row.status === 'FAILED' ? 'danger' : row.status === 'PUBLISHED' ? 'success' : 'info'" effect="light">
               {{ statusLabels[row.status] || row.status }}
             </el-tag>
           </template>
@@ -186,7 +182,6 @@ onBeforeUnmount(() => {
           <template #default="{ row }">
             <span v-if="row.error_message" class="status-hint error-hint">{{ row.error_message }}</span>
             <span v-else-if="row.status === 'PUBLISHED' && row.published_at">已于 {{ new Date(row.published_at).toLocaleDateString('zh-CN') }} 发布</span>
-            <span v-else-if="['AWAITING_REVIEW', 'IN_REVIEW'].includes(row.status)" class="status-hint">知识项审核通过后即可发布</span>
             <span v-else-if="row.status === 'FAILED'" class="status-hint">可重试处理</span>
             <span v-else class="status-hint">向量同步{{ row.vector_sync_status === 'SYNCED' ? '完成' : '中' }}</span>
           </template>

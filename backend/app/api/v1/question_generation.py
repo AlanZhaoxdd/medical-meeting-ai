@@ -20,13 +20,19 @@ SessionDependency = Annotated[AsyncSession, Depends(get_session)]
 EditorDependency = Annotated[AuthContext, Depends(require_role(Role.EDITOR))]
 
 
-async def _meeting(session: AsyncSession, meeting_id: UUID, current: AuthContext) -> Meeting:
+async def _meeting(
+    session: AsyncSession,
+    meeting_id: UUID,
+    current: AuthContext,
+    *,
+    allow_deleted_kb: bool = False,
+) -> Meeting:
     meeting = await session.scalar(
         select(Meeting).where(Meeting.id == meeting_id, Meeting.deleted_at.is_(None))
     )
     if meeting is None or meeting.organization_id != current.organization_id:
         raise NotFoundError("会议", "meeting_not_found")
-    if meeting.knowledge_base_id is not None:
+    if meeting.knowledge_base_id is not None and not allow_deleted_kb:
         await require_kb_access(session, current, meeting.knowledge_base_id)
     return meeting
 
@@ -101,7 +107,7 @@ async def retry_question_generation(
 async def list_question_evidences(
     meeting_id: UUID, question_id: UUID, session: SessionDependency, current: CurrentUserDependency
 ) -> list[QuestionEvidenceRead]:
-    meeting = await _meeting(session, meeting_id, current)
+    meeting = await _meeting(session, meeting_id, current, allow_deleted_kb=True)
     question = await session.scalar(
         select(MeetingQuestion).where(
             MeetingQuestion.id == question_id,

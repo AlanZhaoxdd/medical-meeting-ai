@@ -14,7 +14,7 @@ ALLOWED_TRANSITIONS: dict[DocumentStatus, set[DocumentStatus]] = {
         DocumentStatus.FAILED,
     },
     DocumentStatus.EXTRACTING: {
-        DocumentStatus.AWAITING_REVIEW,
+        DocumentStatus.PUBLISHED,
         DocumentStatus.FAILED,
     },
     DocumentStatus.AWAITING_REVIEW: {

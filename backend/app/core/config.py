@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     # Maximum number of persisted chat messages loaded as follow-up history.
     # Only completed user->assistant pairs are used for query rewriting.
     chat_history_max_messages: int = 8
+    # Simple agent routing for meeting Q&A. When enabled, the LLM first
+    # classifies each question and dispatches to the grounded RAG path, a
+    # direct general-knowledge answer, or a refusal. When disabled, every
+    # question goes through the grounded RAG path (previous behaviour).
+    chat_agent_enabled: bool = True
+    # Whether questions unrelated to the meeting/KB may be answered directly
+    # by the LLM. When disabled they are refused with a scoped message.
+    chat_general_answers_enabled: bool = True
     # Maximum ranked candidates per question type kept in the selectable pool.
     meeting_question_candidate_limit: int = 10
     # Default page size when the frontend opens the candidate picker.
