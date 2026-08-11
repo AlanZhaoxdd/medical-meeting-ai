@@ -670,6 +670,24 @@ async def _publish_document(session: AsyncSession, state: IngestionState) -> dic
         ),
         {"document_id": document.id},
     )
+    # The vector rows may have been created as DRAFT during the meeting-import
+    # review flow.  Publishing the SQL rows alone leaves Milvus filtered out
+    # by question/search retrieval, so reconcile the vector publication state
+    # through the outbox after the transaction commits.
+    await session.execute(
+        pg_insert(OutboxEvent)
+        .values(
+            idempotency_key=f"vector.publish_document:{document.id}:{document.version}",
+            event_type="vector.publish_document",
+            aggregate_id=str(document.id),
+            payload={
+                "document_id": str(document.id),
+                "document_version": document.version,
+            },
+            status="PENDING",
+        )
+        .on_conflict_do_nothing(index_elements=[OutboxEvent.idempotency_key])
+    )
     await session.commit()
     return {"document_status": document.status, "auto_published": True}
 

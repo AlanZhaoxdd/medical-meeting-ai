@@ -1771,6 +1771,22 @@ async def confirm_import(
     item.confirmed_revision_id = revision.id
     item.confirmation_idempotency_key = key
     await session.flush()
+    # Confirmation promotes the SQL chunks immediately, while their Milvus
+    # records can still carry the DRAFT publication flag from the review flow.
+    # Queue this before question generation so the outbox dispatcher updates
+    # the vector filter state first.
+    session.add(
+        OutboxEvent(
+            idempotency_key=f"vector.publish_document:{document.id}:{document.version}",
+            event_type="vector.publish_document",
+            aggregate_id=str(document.id),
+            payload={
+                "document_id": str(document.id),
+                "document_version": document.version,
+            },
+            status="PENDING",
+        )
+    )
     job = await session.scalar(
         select(IngestionJob)
         .where(IngestionJob.job_id == f"meeting-import-{item.id}")
